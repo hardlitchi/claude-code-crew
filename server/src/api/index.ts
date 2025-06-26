@@ -11,10 +11,12 @@ import {
   Repository
 } from '../../../shared/types.js';
 
-export async function setupApiRoutes(app: Express, io: Server, sessionManager: SessionManager) {
-  const repositoryService = new RepositoryService();
-  await repositoryService.initialize();
+export async function setupApiRoutes(app: Express, io: Server, sessionManager: SessionManager, repositoryService: RepositoryService) {
+  console.log('[API] Setting up API routes...');
+  console.log('[API] Using shared RepositoryService with repositories:', repositoryService.getAllRepositories().map(r => `${r.name} (${r.id})`));
+  
   const worktreeService = new WorktreeService(repositoryService);
+  console.log('[API] WorktreeService initialized');
   
   // Helper function to get worktrees with session info
   const getWorktreesWithSessions = (repositoryId?: string): Worktree[] => {
@@ -36,9 +38,12 @@ export async function setupApiRoutes(app: Express, io: Server, sessionManager: S
   // Get all repositories
   app.get('/api/repositories', (req, res) => {
     try {
+      console.log('[API] GET /api/repositories called');
       const repositories = repositoryService.getAllRepositories();
+      console.log('[API] Returning repositories:', repositories.map(r => `${r.name} (${r.id})`));
       res.json(repositories);
     } catch (error) {
+      console.error('[API] Error in GET /api/repositories:', error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to get repositories' 
       });
@@ -49,12 +54,24 @@ export async function setupApiRoutes(app: Express, io: Server, sessionManager: S
   app.get('/api/worktrees', (req, res) => {
     try {
       const repositoryId = req.query.repositoryId as string | undefined;
-      if (!worktreeService.isGitRepository(repositoryId)) {
+      console.log('[API] GET /api/worktrees called with repositoryId:', repositoryId);
+      
+      // Check if repository exists
+      if (repositoryId && !repositoryService.isValidRepository(repositoryId)) {
+        console.log('[API] Repository not found:', repositoryId);
+        return res.status(400).json({ error: `Repository not found: ${repositoryId}` });
+      }
+      
+      if (repositoryId && !worktreeService.isGitRepository(repositoryId)) {
+        console.log('[API] Not a git repository:', repositoryId);
         return res.status(400).json({ error: 'Not a git repository' });
       }
+      
       const worktrees = worktreeService.getWorktrees(repositoryId);
+      console.log('[API] Found worktrees for repository', repositoryId, ':', worktrees.length, 'worktrees');
       res.json(worktrees);
     } catch (error) {
+      console.error('[API] Error in GET /api/worktrees:', error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to get worktrees' 
       });

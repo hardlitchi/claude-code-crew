@@ -11,6 +11,7 @@ services:
       - PORT=${PORT:-3001}
       - WORK_DIR=${WORK_DIR:-/app/workspace}
       - CC_CLAUDE_ARGS=${CC_CLAUDE_ARGS:-}
+      - CC_REPOSITORIES=${CC_REPOSITORIES:-}
     volumes:
       - "${HOST_WORK_DIR:-./workspace}:/app/workspace"
       - "/var/run/docker.sock:/var/run/docker.sock"

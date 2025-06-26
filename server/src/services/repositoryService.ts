@@ -13,35 +13,66 @@ export class RepositoryService {
   }
 
   async initialize(): Promise<void> {
+    console.log('[RepositoryService] Starting initialization...');
+    
     const envRepos = process.env.CC_REPOSITORIES;
     const workDir = process.env.WORK_DIR || process.cwd();
+    
+    console.log('[RepositoryService] Environment repos:', envRepos ? 'found' : 'not found');
+    console.log('[RepositoryService] Work directory:', workDir);
 
-    if (envRepos) {
+    if (envRepos && envRepos.trim()) {
       // Multi-repository mode from environment
       try {
+        console.log('[RepositoryService] Parsing environment repositories...');
         const repos = JSON.parse(envRepos);
-        repos.forEach((repo: Repository) => {
-          this.repositories.set(repo.id, repo);
-        });
+        console.log('[RepositoryService] Parsed repositories:', Array.isArray(repos) ? repos.length : 0);
+        
+        if (Array.isArray(repos) && repos.length > 0) {
+          repos.forEach((repo: Repository) => {
+            this.repositories.set(repo.id, repo);
+            console.log('[RepositoryService] Adding repository:', repo.name, repo.path);
+          });
+          console.log('[RepositoryService] Total repositories loaded:', this.repositories.size);
+        } else {
+          console.log('[RepositoryService] Empty repository array, creating default');
+          this.createDefaultRepository(workDir);
+        }
       } catch (error) {
-        console.error('Failed to parse CC_REPOSITORIES:', error);
+        console.error('[RepositoryService] Failed to parse CC_REPOSITORIES:', error);
+        this.createDefaultRepository(workDir);
       }
     } else {
       // Try to load from config file
       try {
         await this.loadFromConfig();
+        if (this.repositories.size === 0) {
+          this.createDefaultRepository(workDir);
+        }
       } catch (error) {
         // Single repository mode (backward compatibility)
-        this.singleRepoMode = true;
-        const defaultRepo: Repository = {
-          id: 'default',
-          name: path.basename(workDir),
-          path: workDir,
-          description: 'Default repository'
-        };
-        this.repositories.set(defaultRepo.id, defaultRepo);
+        this.createDefaultRepository(workDir);
       }
     }
+    
+    // Ensure we have at least one repository
+    if (this.repositories.size === 0) {
+      this.createDefaultRepository(workDir);
+    }
+    
+    console.log('[RepositoryService] Initialization completed successfully');
+  }
+
+  private createDefaultRepository(workDir: string): void {
+    this.singleRepoMode = true;
+    const defaultRepo: Repository = {
+      id: 'default',
+      name: path.basename(workDir),
+      path: workDir,
+      description: 'Default repository'
+    };
+    this.repositories.set(defaultRepo.id, defaultRepo);
+    console.log('[RepositoryService] Created default repository:', defaultRepo.name, 'at', defaultRepo.path);
   }
 
   private async loadFromConfig(): Promise<void> {

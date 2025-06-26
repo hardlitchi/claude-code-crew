@@ -51,13 +51,25 @@ const SessionManager: React.FC = () => {
     const newSocket = io();
     setSocket(newSocket);
 
+    // Load initial repositories
+    fetch('/api/repositories')
+      .then(res => res.json())
+      .then((data: Repository[]) => {
+        setRepositories(data);
+        // Auto-select first repository if none selected
+        if (!selectedRepository && data.length > 0) {
+          setSelectedRepository(data[0]);
+        }
+      })
+      .catch(err => console.error('Failed to fetch repositories:', err));
+
     newSocket.on('worktrees:updated', (updatedWorktrees: Worktree[]) => {
       console.log('[Client] Received worktrees:updated event with', updatedWorktrees.length, 'worktrees');
-      // Filter worktrees by selected repository
-      const filteredWorktrees = selectedRepository 
-        ? updatedWorktrees.filter(w => w.repositoryId === selectedRepository.id)
-        : updatedWorktrees;
-      setWorktrees([...filteredWorktrees]);
+      // Force refresh of current repository's worktrees
+      // We'll handle filtering in the repository change useEffect
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('refreshWorktrees'));
+      }, 100);
     });
 
     newSocket.on('repositories:updated', (updatedRepositories: Repository[]) => {
@@ -96,16 +108,46 @@ const SessionManager: React.FC = () => {
     };
   }, []); // Empty dependency array - only run once
 
-  // Effect to filter worktrees when repository changes
-  useEffect(() => {
+  // Function to fetch worktrees for current repository
+  const fetchWorktrees = React.useCallback(() => {
     if (selectedRepository && socket) {
-      // Request worktrees for selected repository
-      fetch(`/api/worktrees?repositoryId=${selectedRepository.id}`)
-        .then(res => res.json())
-        .then(data => setWorktrees(data))
-        .catch(err => console.error('Failed to fetch worktrees:', err));
+      console.log('[Client] Fetching worktrees for repository:', selectedRepository.name, selectedRepository.id);
+      const url = `/api/worktrees?repositoryId=${selectedRepository.id}`;
+      console.log('[Client] Fetching worktrees from:', url);
+      fetch(url)
+        .then(res => {
+          console.log('[Client] Worktree fetch response status:', res.status);
+          return res.json();
+        })
+        .then(data => {
+          console.log('[Client] Worktree fetch success, received:', data);
+          setWorktrees(data);
+        })
+        .catch(err => {
+          console.error('[Client] Failed to fetch worktrees:', err);
+          setWorktrees([]); // Reset worktrees on error
+        });
+    } else {
+      console.log('[Client] No repository selected or no socket, clearing worktrees');
+      setWorktrees([]);
     }
   }, [selectedRepository, socket]);
+
+  // Effect to filter worktrees when repository changes
+  useEffect(() => {
+    fetchWorktrees();
+  }, [fetchWorktrees]);
+
+  // Listen for refresh events
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('[Client] Received refreshWorktrees event');
+      fetchWorktrees();
+    };
+    
+    window.addEventListener('refreshWorktrees', handleRefresh);
+    return () => window.removeEventListener('refreshWorktrees', handleRefresh);
+  }, [fetchWorktrees]);
 
   // Separate effect to update worktree when worktrees change
   useEffect(() => {

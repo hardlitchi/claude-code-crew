@@ -1,6 +1,7 @@
 import { spawn, IPty } from 'node-pty-prebuilt-multiarch';
 import { EventEmitter } from 'events';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, accessSync, constants } from 'fs';
+import { dirname } from 'path';
 import { execSync } from 'child_process';
 import { Session, SessionState, Worktree } from '../../../shared/types.js';
 
@@ -132,7 +133,17 @@ export class SessionManager extends EventEmitter {
     // Ensure working directory exists
     if (!existsSync(worktreePath)) {
       try {
+        // Check if parent directory is writable
+        const parentDir = dirname(worktreePath);
+        try {
+          accessSync(parentDir, constants.W_OK);
+        } catch (accessError) {
+          console.error(`Parent directory ${parentDir} is not writable:`, accessError);
+          throw new Error(`Cannot create working directory: parent directory ${parentDir} is not writable`);
+        }
+        
         mkdirSync(worktreePath, { recursive: true });
+        console.log(`Created directory: ${worktreePath}`);
       } catch (error) {
         console.error(`Failed to create directory ${worktreePath}:`, error);
         throw new Error(`Cannot create working directory: ${worktreePath}`);

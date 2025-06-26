@@ -12,8 +12,10 @@ export class WorktreeService {
   }
 
   private getRepositoryPath(repositoryId?: string): string {
+    console.log('[WorktreeService] getRepositoryPath called with:', repositoryId);
     if (!repositoryId) {
       const defaultId = this.repositoryService.getDefaultRepositoryId();
+      console.log('[WorktreeService] No repositoryId provided, using default:', defaultId);
       if (!defaultId) {
         throw new Error('No repositories configured');
       }
@@ -21,20 +23,25 @@ export class WorktreeService {
     }
 
     const repository = this.repositoryService.getRepository(repositoryId);
+    console.log('[WorktreeService] Found repository:', repository);
     if (!repository) {
       throw new Error(`Repository ${repositoryId} not found`);
     }
 
+    console.log('[WorktreeService] Returning path:', repository.path);
     return repository.path;
   }
 
   getWorktrees(repositoryId?: string): Worktree[] {
     try {
+      console.log('[WorktreeService] getWorktrees called with repositoryId:', repositoryId);
       const rootPath = this.getRepositoryPath(repositoryId);
+      console.log('[WorktreeService] Using repository path:', rootPath);
       const output = execSync('git worktree list --porcelain', {
         cwd: rootPath,
         encoding: 'utf8',
       });
+      console.log('[WorktreeService] Git worktree output:', output);
 
       const worktrees: Worktree[] = [];
       const lines = output.trim().split('\n');
@@ -74,8 +81,10 @@ export class WorktreeService {
         w.repositoryId = repositoryId || this.repositoryService.getDefaultRepositoryId() || '';
       });
 
+      console.log('[WorktreeService] Returning', worktrees.length, 'worktrees:', worktrees.map(w => `${w.branch} -> ${w.path}`));
       return worktrees;
-    } catch (_error) {
+    } catch (error) {
+      console.log('[WorktreeService] Git worktree command failed:', error);
       // If git worktree command fails, assume we're in a regular git repo
       const rootPath = this.getRepositoryPath(repositoryId);
       return [
@@ -104,8 +113,15 @@ export class WorktreeService {
   }
 
   isGitRepository(repositoryId?: string): boolean {
-    const rootPath = this.getRepositoryPath(repositoryId);
-    return existsSync(path.join(rootPath, '.git'));
+    try {
+      const rootPath = this.getRepositoryPath(repositoryId);
+      const gitExists = existsSync(path.join(rootPath, '.git'));
+      console.log('[WorktreeService] isGitRepository check for', repositoryId, 'at path', rootPath, ':', gitExists);
+      return gitExists;
+    } catch (error) {
+      console.log('[WorktreeService] isGitRepository failed:', error);
+      return false;
+    }
   }
 
   hasCommits(repositoryId?: string): boolean {

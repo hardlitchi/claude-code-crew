@@ -8,6 +8,8 @@ if [ -d "/app/workspace" ]; then
     # Check if current user can access the workspace
     if [ ! -w "/app/workspace" ]; then
         echo "Warning: Workspace directory is not writable by current user"
+        echo "Attempting to fix ownership..."
+        chown -R node:node /app/workspace 2>/dev/null || echo "Failed to fix ownership (may need to run as root)"
     fi
     
     # Add specific safe directory for common workspace paths
