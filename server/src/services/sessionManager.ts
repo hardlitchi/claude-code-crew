@@ -1,5 +1,7 @@
 import { spawn, IPty } from 'node-pty-prebuilt-multiarch';
 import { EventEmitter } from 'events';
+import { existsSync, mkdirSync } from 'fs';
+import { execSync } from 'child_process';
 import { Session, SessionState, Worktree } from '../../../shared/types.js';
 
 interface InternalSession extends Session {
@@ -127,13 +129,39 @@ export class SessionManager extends EventEmitter {
       ? process.env['CC_CLAUDE_ARGS'].split(' ')
       : [];
 
-    const ptyProcess = spawn('claude', claudeArgs, {
-      name: 'xterm-color',
-      cols: process.stdout.columns || 80,
-      rows: process.stdout.rows || 24,
-      cwd: worktreePath,
-      env: process.env as { [key: string]: string },
-    });
+    // Ensure working directory exists
+    if (!existsSync(worktreePath)) {
+      try {
+        mkdirSync(worktreePath, { recursive: true });
+      } catch (error) {
+        console.error(`Failed to create directory ${worktreePath}:`, error);
+        throw new Error(`Cannot create working directory: ${worktreePath}`);
+      }
+    }
+
+    // Configure git safe directory for this specific path
+    try {
+      execSync(`git config --global --add safe.directory "${worktreePath}"`, { stdio: 'ignore' });
+      console.log(`Added safe directory: ${worktreePath}`);
+    } catch (error) {
+      console.warn(`Failed to add safe directory ${worktreePath}:`, error);
+    }
+
+    let ptyProcess: IPty;
+    try {
+      ptyProcess = spawn('claude', claudeArgs, {
+        name: 'xterm-color',
+        cols: process.stdout.columns || 80,
+        rows: process.stdout.rows || 24,
+        cwd: worktreePath,
+        env: process.env as { [key: string]: string },
+      });
+    } catch (error) {
+      console.error(`Failed to spawn Claude CLI:`, error);
+      console.error(`Command: claude ${claudeArgs.join(' ')}`);
+      console.error(`Working directory: ${worktreePath}`);
+      throw new Error(`Failed to start Claude CLI: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 
     const session: InternalSession = {
       id,

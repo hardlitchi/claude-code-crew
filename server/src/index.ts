@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 import dotenv from 'dotenv';
 
 import { setupWebSocket } from './websocket/index.js';
@@ -51,7 +52,7 @@ if (IS_PRODUCTION) {
   });
 } else {
   // Development mode - serve built files if available  
-  if (require('fs').existsSync(publicPath)) {
+  if (existsSync(publicPath)) {
     app.use(express.static(publicPath));
     app.get('*', (req, res) => {
       if (req.path.startsWith('/api/') || req.path.startsWith('/socket.io/')) {
