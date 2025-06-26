@@ -43,7 +43,8 @@ RUN chmod +x /entrypoint.sh
 # Create workspace directory and set permissions
 RUN mkdir -p /app/workspace && \
     chown -R node:node /app && \
-    chmod 755 /app/workspace
+    chmod 755 /app/workspace && \
+    chmod 775 /app/workspace
 
 # Switch to node user
 USER node

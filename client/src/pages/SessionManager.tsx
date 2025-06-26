@@ -13,6 +13,11 @@ import {
   Chip,
   Divider,
   Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  SelectChangeEvent,
 } from '@mui/material';
 import {
   FolderOpen,
@@ -23,7 +28,7 @@ import {
   Circle,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
-import { Worktree, Session } from '../../../shared/types';
+import { Worktree, Session, Repository } from '../../../shared/types';
 import TerminalView from '../components/TerminalView';
 import CreateWorktreeDialog from '../components/CreateWorktreeDialog';
 import DeleteWorktreeDialog from '../components/DeleteWorktreeDialog';
@@ -33,6 +38,8 @@ const drawerWidth = 300;
 
 const SessionManager: React.FC = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [selectedRepository, setSelectedRepository] = useState<Repository | null>(null);
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
   const [selectedWorktree, setSelectedWorktree] = useState<Worktree | null>(null);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -44,10 +51,34 @@ const SessionManager: React.FC = () => {
     const newSocket = io();
     setSocket(newSocket);
 
+    // Load initial repositories
+    fetch('/api/repositories')
+      .then(res => res.json())
+      .then((data: Repository[]) => {
+        setRepositories(data);
+        // Auto-select first repository if none selected
+        if (!selectedRepository && data.length > 0) {
+          setSelectedRepository(data[0]);
+        }
+      })
+      .catch(err => console.error('Failed to fetch repositories:', err));
+
     newSocket.on('worktrees:updated', (updatedWorktrees: Worktree[]) => {
       console.log('[Client] Received worktrees:updated event with', updatedWorktrees.length, 'worktrees');
-      // Force React to detect the change by creating a new array
-      setWorktrees([...updatedWorktrees]);
+      // Force refresh of current repository's worktrees
+      // We'll handle filtering in the repository change useEffect
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('refreshWorktrees'));
+      }, 100);
+    });
+
+    newSocket.on('repositories:updated', (updatedRepositories: Repository[]) => {
+      console.log('[Client] Received repositories:updated event with', updatedRepositories.length, 'repositories');
+      setRepositories([...updatedRepositories]);
+      // Auto-select first repository if none selected
+      if (!selectedRepository && updatedRepositories.length > 0) {
+        setSelectedRepository(updatedRepositories[0]);
+      }
     });
 
     newSocket.on('session:created', (session: Session) => {
@@ -77,10 +108,54 @@ const SessionManager: React.FC = () => {
     };
   }, []); // Empty dependency array - only run once
 
+  // Function to fetch worktrees for current repository
+  const fetchWorktrees = React.useCallback(() => {
+    if (selectedRepository && socket) {
+      console.log('[Client] Fetching worktrees for repository:', selectedRepository.name, selectedRepository.id);
+      const url = `/api/worktrees?repositoryId=${selectedRepository.id}`;
+      console.log('[Client] Fetching worktrees from:', url);
+      fetch(url)
+        .then(res => {
+          console.log('[Client] Worktree fetch response status:', res.status);
+          return res.json();
+        })
+        .then(data => {
+          console.log('[Client] Worktree fetch success, received:', data);
+          setWorktrees(data);
+        })
+        .catch(err => {
+          console.error('[Client] Failed to fetch worktrees:', err);
+          setWorktrees([]); // Reset worktrees on error
+        });
+    } else {
+      console.log('[Client] No repository selected or no socket, clearing worktrees');
+      setWorktrees([]);
+    }
+  }, [selectedRepository, socket]);
+
+  // Effect to filter worktrees when repository changes
+  useEffect(() => {
+    fetchWorktrees();
+  }, [fetchWorktrees]);
+
+  // Listen for refresh events
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('[Client] Received refreshWorktrees event');
+      fetchWorktrees();
+    };
+    
+    window.addEventListener('refreshWorktrees', handleRefresh);
+    return () => window.removeEventListener('refreshWorktrees', handleRefresh);
+  }, [fetchWorktrees]);
+
   // Separate effect to update worktree when worktrees change
   useEffect(() => {
     if (selectedWorktree && worktrees.length > 0) {
-      const updated = worktrees.find(w => w.path === selectedWorktree.path);
+      const updated = worktrees.find(w => 
+        w.path === selectedWorktree.path && 
+        w.repositoryId === selectedWorktree.repositoryId
+      );
       if (updated) {
         setSelectedWorktree(updated);
         if (updated.session) {
@@ -90,15 +165,25 @@ const SessionManager: React.FC = () => {
     }
   }, [worktrees, selectedWorktree]);
 
+  const handleRepositoryChange = (event: SelectChangeEvent<string>) => {
+    const repositoryId = event.target.value;
+    const repository = repositories.find(r => r.id === repositoryId);
+    if (repository) {
+      setSelectedRepository(repository);
+      setSelectedWorktree(null);
+      setActiveSession(null);
+    }
+  };
+
   const handleSelectWorktree = (worktree: Worktree) => {
     setSelectedWorktree(worktree);
 
     if (!worktree.session && socket) {
       // Create a new session for this worktree
-      socket.emit('session:create', worktree.path);
+      socket.emit('session:create', { worktreePath: worktree.path, repositoryId: worktree.repositoryId });
     } else if (worktree.session && socket) {
       // Activate existing session on server and client
-      socket.emit('session:setActive', worktree.path);
+      socket.emit('session:setActive', { worktreePath: worktree.path, repositoryId: worktree.repositoryId });
       setActiveSession(worktree.session);
     }
   };
@@ -169,9 +254,31 @@ const SessionManager: React.FC = () => {
       >
         <Toolbar>
           <Typography variant="h6" noWrap>
-            Worktrees
+            Repositories
           </Typography>
         </Toolbar>
+        <Box sx={{ p: 2 }}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Repository</InputLabel>
+            <Select
+              value={selectedRepository?.id || ''}
+              label="Repository"
+              onChange={handleRepositoryChange}
+            >
+              {repositories.map((repo) => (
+                <MenuItem key={repo.id} value={repo.id}>
+                  {repo.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+        <Divider />
+        <Box sx={{ p: 1 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Worktrees
+          </Typography>
+        </Box>
         <Divider />
         <List>
           {worktrees.map((worktree) => (
@@ -259,16 +366,19 @@ const SessionManager: React.FC = () => {
       <CreateWorktreeDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
+        repositoryId={selectedRepository?.id}
       />
       <DeleteWorktreeDialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
         worktrees={worktrees}
+        repositoryId={selectedRepository?.id}
       />
       <MergeWorktreeDialog
         open={mergeDialogOpen}
         onClose={() => setMergeDialogOpen(false)}
         worktrees={worktrees}
+        repositoryId={selectedRepository?.id}
       />
     </Box>
   );

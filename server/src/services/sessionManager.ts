@@ -1,6 +1,7 @@
 import { spawn, IPty } from 'node-pty-prebuilt-multiarch';
 import { EventEmitter } from 'events';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, accessSync, constants } from 'fs';
+import { dirname } from 'path';
 import { execSync } from 'child_process';
 import { Session, SessionState, Worktree } from '../../../shared/types.js';
 
@@ -108,12 +109,14 @@ export class SessionManager extends EventEmitter {
     return newState;
   }
 
-  createSession(worktreePath: string): Session {
-    const existing = this.sessions.get(worktreePath);
+  createSession(worktreePath: string, repositoryId: string): Session {
+    const sessionKey = `${repositoryId}:${worktreePath}`;
+    const existing = this.sessions.get(sessionKey);
     if (existing) {
       return {
         id: existing.id,
         worktreePath: existing.worktreePath,
+        repositoryId: existing.repositoryId,
         state: existing.state,
         lastActivity: existing.lastActivity,
       };
@@ -130,7 +133,17 @@ export class SessionManager extends EventEmitter {
     // Ensure working directory exists
     if (!existsSync(worktreePath)) {
       try {
+        // Check if parent directory is writable
+        const parentDir = dirname(worktreePath);
+        try {
+          accessSync(parentDir, constants.W_OK);
+        } catch (accessError) {
+          console.error(`Parent directory ${parentDir} is not writable:`, accessError);
+          throw new Error(`Cannot create working directory: parent directory ${parentDir} is not writable`);
+        }
+        
         mkdirSync(worktreePath, { recursive: true });
+        console.log(`Created directory: ${worktreePath}`);
       } catch (error) {
         console.error(`Failed to create directory ${worktreePath}:`, error);
         throw new Error(`Cannot create working directory: ${worktreePath}`);
@@ -164,6 +177,7 @@ export class SessionManager extends EventEmitter {
     const session: InternalSession = {
       id,
       worktreePath,
+      repositoryId,
       process: ptyProcess,
       state: 'busy',
       output: [],
@@ -173,12 +187,13 @@ export class SessionManager extends EventEmitter {
     };
 
     this.setupBackgroundHandler(session);
-    this.sessions.set(worktreePath, session);
+    this.sessions.set(sessionKey, session);
     this.emit('sessionCreated', session);
 
     return {
       id: session.id,
       worktreePath: session.worktreePath,
+      repositoryId: session.repositoryId,
       state: session.state,
       lastActivity: session.lastActivity,
     };
@@ -221,7 +236,7 @@ export class SessionManager extends EventEmitter {
       const newState = this.detectSessionState(
         cleanData,
         oldState,
-        session.worktreePath,
+        `${session.repositoryId}:${session.worktreePath}`,
       );
 
       if (newState !== oldState) {
@@ -237,13 +252,22 @@ export class SessionManager extends EventEmitter {
     session.process.onExit(() => {
       session.state = 'idle';
       this.emit('sessionStateChanged', session);
-      this.destroySession(session.worktreePath);
+      this.destroySession(`${session.repositoryId}:${session.worktreePath}`);
       this.emit('sessionExit', session);
     });
   }
 
-  getSession(worktreePath: string): InternalSession | undefined {
-    return this.sessions.get(worktreePath);
+  getSession(worktreePath: string, repositoryId?: string): InternalSession | undefined {
+    if (repositoryId) {
+      return this.sessions.get(`${repositoryId}:${worktreePath}`);
+    }
+    // Backward compatibility: search all sessions
+    for (const [key, session] of this.sessions.entries()) {
+      if (session.worktreePath === worktreePath) {
+        return session;
+      }
+    }
+    return undefined;
   }
 
   getSessionById(sessionId: string): InternalSession | undefined {
@@ -255,8 +279,8 @@ export class SessionManager extends EventEmitter {
     return undefined;
   }
 
-  setSessionActive(worktreePath: string, active: boolean): void {
-    const session = this.sessions.get(worktreePath);
+  setSessionActive(worktreePath: string, active: boolean, repositoryId?: string): void {
+    const session = this.getSession(worktreePath, repositoryId);
     if (session) {
       session.isActive = active;
 
@@ -283,20 +307,20 @@ export class SessionManager extends EventEmitter {
     }
   }
 
-  destroySession(worktreePath: string): void {
-    const session = this.sessions.get(worktreePath);
+  destroySession(sessionKey: string): void {
+    const session = this.sessions.get(sessionKey);
     if (session) {
       try {
         session.process.kill();
       } catch (_error) {
         // Process might already be dead
       }
-      const timer = this.busyTimers.get(worktreePath);
+      const timer = this.busyTimers.get(sessionKey);
       if (timer) {
         clearTimeout(timer);
-        this.busyTimers.delete(worktreePath);
+        this.busyTimers.delete(sessionKey);
       }
-      this.sessions.delete(worktreePath);
+      this.sessions.delete(sessionKey);
       this.waitingWithBottomBorder.delete(session.id);
       this.emit('sessionDestroyed', session);
     }
@@ -306,14 +330,15 @@ export class SessionManager extends EventEmitter {
     return Array.from(this.sessions.values()).map(session => ({
       id: session.id,
       worktreePath: session.worktreePath,
+      repositoryId: session.repositoryId,
       state: session.state,
       lastActivity: session.lastActivity,
     }));
   }
 
   destroy(): void {
-    for (const worktreePath of this.sessions.keys()) {
-      this.destroySession(worktreePath);
+    for (const sessionKey of this.sessions.keys()) {
+      this.destroySession(sessionKey);
     }
   }
 }

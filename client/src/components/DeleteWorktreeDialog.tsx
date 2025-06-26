@@ -19,12 +19,14 @@ interface DeleteWorktreeDialogProps {
   open: boolean;
   onClose: () => void;
   worktrees: Worktree[];
+  repositoryId?: string;
 }
 
 const DeleteWorktreeDialog: React.FC<DeleteWorktreeDialogProps> = ({
   open,
   onClose,
   worktrees,
+  repositoryId,
 }) => {
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +54,7 @@ const DeleteWorktreeDialog: React.FC<DeleteWorktreeDialogProps> = ({
     setError(null);
 
     try {
-      await axios.delete('/api/worktrees', { data: { paths: selected } });
+      await axios.delete('/api/worktrees', { data: { paths: selected, repositoryId } });
       setSelected([]);
       onClose();
     } catch (err: any) {

@@ -1,21 +1,47 @@
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
-import { Worktree } from '../../../shared/types.js';
+import { Worktree, Repository } from '../../../shared/types.js';
+import { RepositoryService } from './repositoryService.js';
 
 export class WorktreeService {
-  private rootPath: string;
+  private repositoryService: RepositoryService;
 
-  constructor(rootPath?: string) {
-    this.rootPath = rootPath || process.cwd();
+  constructor(repositoryService: RepositoryService) {
+    this.repositoryService = repositoryService;
   }
 
-  getWorktrees(): Worktree[] {
+  private getRepositoryPath(repositoryId?: string): string {
+    console.log('[WorktreeService] getRepositoryPath called with:', repositoryId);
+    if (!repositoryId) {
+      const defaultId = this.repositoryService.getDefaultRepositoryId();
+      console.log('[WorktreeService] No repositoryId provided, using default:', defaultId);
+      if (!defaultId) {
+        throw new Error('No repositories configured');
+      }
+      repositoryId = defaultId;
+    }
+
+    const repository = this.repositoryService.getRepository(repositoryId);
+    console.log('[WorktreeService] Found repository:', repository);
+    if (!repository) {
+      throw new Error(`Repository ${repositoryId} not found`);
+    }
+
+    console.log('[WorktreeService] Returning path:', repository.path);
+    return repository.path;
+  }
+
+  getWorktrees(repositoryId?: string): Worktree[] {
     try {
+      console.log('[WorktreeService] getWorktrees called with repositoryId:', repositoryId);
+      const rootPath = this.getRepositoryPath(repositoryId);
+      console.log('[WorktreeService] Using repository path:', rootPath);
       const output = execSync('git worktree list --porcelain', {
-        cwd: this.rootPath,
+        cwd: rootPath,
         encoding: 'utf8',
       });
+      console.log('[WorktreeService] Git worktree output:', output);
 
       const worktrees: Worktree[] = [];
       const lines = output.trim().split('\n');
@@ -49,29 +75,35 @@ export class WorktreeService {
       }
 
       // Mark current worktree
-      const currentPath = this.rootPath;
+      const currentPath = rootPath;
       worktrees.forEach(w => {
         w.isCurrent = w.path === currentPath;
+        w.repositoryId = repositoryId || this.repositoryService.getDefaultRepositoryId() || '';
       });
 
+      console.log('[WorktreeService] Returning', worktrees.length, 'worktrees:', worktrees.map(w => `${w.branch} -> ${w.path}`));
       return worktrees;
-    } catch (_error) {
+    } catch (error) {
+      console.log('[WorktreeService] Git worktree command failed:', error);
       // If git worktree command fails, assume we're in a regular git repo
+      const rootPath = this.getRepositoryPath(repositoryId);
       return [
         {
-          path: this.rootPath,
-          branch: this.getCurrentBranch(),
+          path: rootPath,
+          branch: this.getCurrentBranch(repositoryId),
           isMain: true,
           isCurrent: true,
+          repositoryId: repositoryId || this.repositoryService.getDefaultRepositoryId() || '',
         },
       ];
     }
   }
 
-  private getCurrentBranch(): string {
+  private getCurrentBranch(repositoryId?: string): string {
     try {
+      const rootPath = this.getRepositoryPath(repositoryId);
       const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-        cwd: this.rootPath,
+        cwd: rootPath,
         encoding: 'utf8',
       }).trim();
       return branch;
@@ -80,14 +112,23 @@ export class WorktreeService {
     }
   }
 
-  isGitRepository(): boolean {
-    return existsSync(path.join(this.rootPath, '.git'));
+  isGitRepository(repositoryId?: string): boolean {
+    try {
+      const rootPath = this.getRepositoryPath(repositoryId);
+      const gitExists = existsSync(path.join(rootPath, '.git'));
+      console.log('[WorktreeService] isGitRepository check for', repositoryId, 'at path', rootPath, ':', gitExists);
+      return gitExists;
+    } catch (error) {
+      console.log('[WorktreeService] isGitRepository failed:', error);
+      return false;
+    }
   }
 
-  hasCommits(): boolean {
+  hasCommits(repositoryId?: string): boolean {
     try {
+      const rootPath = this.getRepositoryPath(repositoryId);
       execSync('git rev-parse HEAD', {
-        cwd: this.rootPath,
+        cwd: rootPath,
         encoding: 'utf8',
         stdio: 'pipe',
       });
@@ -100,12 +141,14 @@ export class WorktreeService {
   createWorktree(
     worktreePath: string,
     branch: string,
+    repositoryId?: string,
   ): { success: boolean; error?: string } {
     try {
+      const rootPath = this.getRepositoryPath(repositoryId);
       // Convert relative path to absolute path
       const absolutePath = path.isAbsolute(worktreePath)
         ? worktreePath
-        : path.join(this.rootPath, worktreePath);
+        : path.join(rootPath, worktreePath);
 
       // Check if path already exists
       if (existsSync(absolutePath)) {
@@ -119,7 +162,7 @@ export class WorktreeService {
       let branchExists = false;
       try {
         execSync(`git rev-parse --verify "${branch}"`, {
-          cwd: this.rootPath,
+          cwd: rootPath,
           encoding: 'utf8',
           stdio: 'pipe', // Suppress error output
         });
@@ -134,7 +177,7 @@ export class WorktreeService {
         : `git worktree add -b "${branch}" "${absolutePath}"`;
 
       execSync(command, {
-        cwd: this.rootPath,
+        cwd: rootPath,
         encoding: 'utf8',
       });
 
@@ -148,9 +191,10 @@ export class WorktreeService {
     }
   }
 
-  deleteWorktree(worktreePath: string): { success: boolean; error?: string } {
+  deleteWorktree(worktreePath: string, repositoryId?: string): { success: boolean; error?: string } {
     try {
-      const worktrees = this.getWorktrees();
+      const worktrees = this.getWorktrees(repositoryId);
+      const rootPath = this.getRepositoryPath(repositoryId);
       const worktree = worktrees.find(wt => wt.path === worktreePath);
 
       if (!worktree) {
@@ -169,7 +213,7 @@ export class WorktreeService {
 
       // Remove the worktree
       execSync(`git worktree remove "${worktreePath}" --force`, {
-        cwd: this.rootPath,
+        cwd: rootPath,
         encoding: 'utf8',
       });
 
@@ -177,7 +221,7 @@ export class WorktreeService {
       const branchName = worktree.branch.replace('refs/heads/', '');
       try {
         execSync(`git branch -D "${branchName}"`, {
-          cwd: this.rootPath,
+          cwd: rootPath,
           encoding: 'utf8',
         });
       } catch {
@@ -198,9 +242,10 @@ export class WorktreeService {
     sourceBranch: string,
     targetBranch: string,
     useRebase: boolean = false,
+    repositoryId?: string,
   ): { success: boolean; error?: string } {
     try {
-      const worktrees = this.getWorktrees();
+      const worktrees = this.getWorktrees(repositoryId);
       const targetWorktree = worktrees.find(
         wt => wt.branch.replace('refs/heads/', '') === targetBranch,
       );
@@ -249,9 +294,9 @@ export class WorktreeService {
     }
   }
 
-  deleteWorktreeByBranch(branch: string): { success: boolean; error?: string } {
+  deleteWorktreeByBranch(branch: string, repositoryId?: string): { success: boolean; error?: string } {
     try {
-      const worktrees = this.getWorktrees();
+      const worktrees = this.getWorktrees(repositoryId);
       const worktree = worktrees.find(
         wt => wt.branch.replace('refs/heads/', '') === branch,
       );
@@ -263,7 +308,7 @@ export class WorktreeService {
         };
       }
 
-      return this.deleteWorktree(worktree.path);
+      return this.deleteWorktree(worktree.path, repositoryId);
     } catch (error) {
       return {
         success: false,
