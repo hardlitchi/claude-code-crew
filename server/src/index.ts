@@ -28,10 +28,16 @@ app.use(express.json());
 const sessionManager = new SessionManager();
 
 // API Routes (pass io and sessionManager)
-setupApiRoutes(app, io, sessionManager);
+setupApiRoutes(app, io, sessionManager).catch(error => {
+  console.error('Failed to setup API routes:', error);
+  process.exit(1);
+});
 
 // WebSocket handling (pass sessionManager)
-setupWebSocket(io, sessionManager);
+setupWebSocket(io, sessionManager).catch(error => {
+  console.error('Failed to setup WebSocket:', error);
+  process.exit(1);
+});
 
 // Serve static files in production
 const publicPath = join(dirname(dirname(__dirname)), 'public');

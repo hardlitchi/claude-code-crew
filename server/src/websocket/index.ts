@@ -1,20 +1,49 @@
 import { Server, Socket } from 'socket.io';
 import { SessionManager } from '../services/sessionManager.js';
 import { WorktreeService } from '../services/worktreeService.js';
+import { RepositoryService } from '../services/repositoryService.js';
 import { Session, Worktree } from '../../../shared/types.js';
 
-export function setupWebSocket(io: Server, sessionManager: SessionManager) {
-  const worktreeService = new WorktreeService(process.env.WORK_DIR);
+export async function setupWebSocket(io: Server, sessionManager: SessionManager) {
+  const repositoryService = new RepositoryService();
+  await repositoryService.initialize();
+  const worktreeService = new WorktreeService(repositoryService);
 
   // Update worktrees with session info
-  const getWorktreesWithSessions = (): Worktree[] => {
-    const worktrees = worktreeService.getWorktrees();
+  const getWorktreesWithSessions = (repositoryId?: string): Worktree[] => {
+    if (repositoryId) {
+      const worktrees = worktreeService.getWorktrees(repositoryId);
+      const sessions = sessionManager.getAllSessions();
+      
+      return worktrees.map(worktree => {
+        const session = sessions.find(s => 
+          s.worktreePath === worktree.path && 
+          s.repositoryId === worktree.repositoryId
+        );
+        return {
+          ...worktree,
+          session: session || undefined,
+        };
+      });
+    }
+    
+    // Get all worktrees from all repositories
+    const allWorktrees: Worktree[] = [];
+    const repositories = repositoryService.getAllRepositories();
+    
+    for (const repo of repositories) {
+      const worktrees = worktreeService.getWorktrees(repo.id);
+      allWorktrees.push(...worktrees);
+    }
+    
     const sessions = sessionManager.getAllSessions();
+    console.log(`[WebSocket] Getting worktrees with sessions: ${allWorktrees.length} worktrees, ${sessions.length} sessions`);
     
-    console.log(`[WebSocket] Getting worktrees with sessions: ${worktrees.length} worktrees, ${sessions.length} sessions`);
-    
-    return worktrees.map(worktree => {
-      const session = sessions.find(s => s.worktreePath === worktree.path);
+    return allWorktrees.map(worktree => {
+      const session = sessions.find(s => 
+        s.worktreePath === worktree.path && 
+        s.repositoryId === worktree.repositoryId
+      );
       return {
         ...worktree,
         session: session || undefined,
@@ -60,12 +89,17 @@ export function setupWebSocket(io: Server, sessionManager: SessionManager) {
 
     // Send initial data
     socket.emit('worktrees:updated', getWorktreesWithSessions());
+    socket.emit('repositories:updated', repositoryService.getAllRepositories());
 
     // Handle session creation
-    socket.on('session:create', (worktreePath: string) => {
+    socket.on('session:create', ({ worktreePath, repositoryId }: { worktreePath: string; repositoryId?: string }) => {
       try {
-        const session = sessionManager.createSession(worktreePath);
-        sessionManager.setSessionActive(worktreePath, true);
+        const repoId = repositoryId || repositoryService.getDefaultRepositoryId();
+        if (!repoId) {
+          throw new Error('No repository specified and no default repository available');
+        }
+        const session = sessionManager.createSession(worktreePath, repoId);
+        sessionManager.setSessionActive(worktreePath, true, repoId);
       } catch (error) {
         console.error('Failed to create session:', error);
         socket.emit('error', { 
@@ -111,18 +145,18 @@ export function setupWebSocket(io: Server, sessionManager: SessionManager) {
     });
 
     // Handle session activation (switching between existing sessions)
-    socket.on('session:setActive', (worktreePath: string) => {
+    socket.on('session:setActive', ({ worktreePath, repositoryId }: { worktreePath: string; repositoryId?: string }) => {
       try {
         const sessions = sessionManager.getAllSessions();
         
         // Deactivate all sessions first
         sessions.forEach(session => {
-          sessionManager.setSessionActive(session.worktreePath, false);
+          sessionManager.setSessionActive(session.worktreePath, false, session.repositoryId);
         });
         
         // Activate the selected session (this will automatically emit sessionRestore)
-        console.log(`Setting session active for worktree: ${worktreePath}`);
-        sessionManager.setSessionActive(worktreePath, true);
+        console.log(`Setting session active for worktree: ${worktreePath}, repository: ${repositoryId}`);
+        sessionManager.setSessionActive(worktreePath, true, repositoryId);
       } catch (error) {
         console.error('Failed to set session active:', error);
         socket.emit('error', { 
@@ -137,7 +171,7 @@ export function setupWebSocket(io: Server, sessionManager: SessionManager) {
         const sessions = sessionManager.getAllSessions();
         const session = sessions.find(s => s.id === sessionId);
         if (session) {
-          sessionManager.destroySession(session.worktreePath);
+          sessionManager.destroySession(`${session.repositoryId}:${session.worktreePath}`);
         }
       } catch (error) {
         console.error('Failed to destroy session:', error);

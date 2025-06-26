@@ -14,11 +14,13 @@ import axios from 'axios';
 interface CreateWorktreeDialogProps {
   open: boolean;
   onClose: () => void;
+  repositoryId?: string;
 }
 
 const CreateWorktreeDialog: React.FC<CreateWorktreeDialogProps> = ({
   open,
   onClose,
+  repositoryId,
 }) => {
   const [path, setPath] = useState('');
   const [branch, setBranch] = useState('');
@@ -35,7 +37,7 @@ const CreateWorktreeDialog: React.FC<CreateWorktreeDialogProps> = ({
     setError(null);
 
     try {
-      await axios.post('/api/worktrees', { path, branch });
+      await axios.post('/api/worktrees', { path, branch, repositoryId });
       setPath('');
       setBranch('');
       onClose();

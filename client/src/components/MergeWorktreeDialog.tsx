@@ -22,12 +22,14 @@ interface MergeWorktreeDialogProps {
   open: boolean;
   onClose: () => void;
   worktrees: Worktree[];
+  repositoryId?: string;
 }
 
 const MergeWorktreeDialog: React.FC<MergeWorktreeDialogProps> = ({
   open,
   onClose,
   worktrees,
+  repositoryId,
 }) => {
   const [sourceBranch, setSourceBranch] = useState('');
   const [targetBranch, setTargetBranch] = useState('');
@@ -58,6 +60,7 @@ const MergeWorktreeDialog: React.FC<MergeWorktreeDialogProps> = ({
         targetBranch,
         deleteAfterMerge,
         useRebase,
+        repositoryId,
       });
       
       console.log('[MergeDialog] Merge successful:', response.data);

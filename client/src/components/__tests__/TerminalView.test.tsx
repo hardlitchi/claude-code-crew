@@ -36,6 +36,7 @@ describe('TerminalView', () => {
   const mockSession: Session = {
     id: 'test-session-id',
     worktreePath: '/test/worktree',
+    repositoryId: 'test-repo',
     state: 'idle',
     lastActivity: new Date(),
   };
