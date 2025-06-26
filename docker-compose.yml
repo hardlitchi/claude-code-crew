@@ -1,0 +1,18 @@
+services:
+  claude-code-crew:
+    build: 
+      context: .
+      args:
+        - USER_ID=${USER_ID:-1000}
+        - GROUP_ID=${GROUP_ID:-1000}
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    environment:
+      - PORT=${PORT:-3001}
+      - WORK_DIR=${WORK_DIR:-/app/workspace}
+      - CC_CLAUDE_ARGS=${CC_CLAUDE_ARGS:-}
+    volumes:
+      - "${HOST_WORK_DIR:-./workspace}:/app/workspace"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    working_dir: /app
+    restart: unless-stopped

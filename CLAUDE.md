@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 言語設定 / Language Settings
+- **日本語を使用**: ユーザーとのやり取り、コミットメッセージ、プルリクエスト、コメント、説明文など、すべてのコミュニケーションにおいて日本語を使用すること
+- **Use Japanese**: Use Japanese for all communications including user interactions, commit messages, pull requests, comments, and documentation
+
 ## Project Overview
 
 Claude Code Crew is a web-based interface for managing multiple Claude Code sessions across Git worktrees. It provides browser-based terminal emulation, real-time session management, and Git worktree operations through a React frontend and Node.js backend.
