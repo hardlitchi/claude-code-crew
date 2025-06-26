@@ -67,7 +67,7 @@ export async function setupApiRoutes(app: Express, io: Server, sessionManager: S
         return res.status(400).json({ error: 'Not a git repository' });
       }
       
-      const worktrees = worktreeService.getWorktrees(repositoryId);
+      const worktrees = getWorktreesWithSessions(repositoryId);
       console.log('[API] Found worktrees for repository', repositoryId, ':', worktrees.length, 'worktrees');
       res.json(worktrees);
     } catch (error) {
