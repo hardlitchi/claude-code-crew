@@ -63,14 +63,6 @@ const SessionManager: React.FC = () => {
       })
       .catch(err => console.error('Failed to fetch repositories:', err));
 
-    newSocket.on('worktrees:updated', (updatedWorktrees: Worktree[]) => {
-      console.log('[Client] Received worktrees:updated event with', updatedWorktrees.length, 'worktrees');
-      // Force refresh of current repository's worktrees
-      // We'll handle filtering in the repository change useEffect
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('refreshWorktrees'));
-      }, 100);
-    });
 
     newSocket.on('repositories:updated', (updatedRepositories: Repository[]) => {
       console.log('[Client] Received repositories:updated event with', updatedRepositories.length, 'repositories');
@@ -108,6 +100,26 @@ const SessionManager: React.FC = () => {
     };
   }, []); // Empty dependency array - only run once
 
+  // Separate effect to handle worktrees:updated events with current selectedRepository
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleWorktreesUpdated = (updatedWorktrees: Worktree[]) => {
+      console.log('[Client] Received worktrees:updated event with', updatedWorktrees.length, 'worktrees');
+      // Filter worktrees for current repository and update directly
+      if (selectedRepository) {
+        const filteredWorktrees = updatedWorktrees.filter(w => w.repositoryId === selectedRepository.id);
+        setWorktrees(filteredWorktrees);
+      }
+    };
+
+    socket.on('worktrees:updated', handleWorktreesUpdated);
+
+    return () => {
+      socket.off('worktrees:updated', handleWorktreesUpdated);
+    };
+  }, [socket, selectedRepository]);
+
   // Function to fetch worktrees for current repository
   const fetchWorktrees = React.useCallback(() => {
     if (selectedRepository && socket) {
@@ -138,16 +150,6 @@ const SessionManager: React.FC = () => {
     fetchWorktrees();
   }, [fetchWorktrees]);
 
-  // Listen for refresh events
-  useEffect(() => {
-    const handleRefresh = () => {
-      console.log('[Client] Received refreshWorktrees event');
-      fetchWorktrees();
-    };
-    
-    window.addEventListener('refreshWorktrees', handleRefresh);
-    return () => window.removeEventListener('refreshWorktrees', handleRefresh);
-  }, [fetchWorktrees]);
 
   // Separate effect to update worktree when worktrees change
   useEffect(() => {
