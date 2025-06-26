@@ -90,8 +90,14 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
 
     const handleRestore = ({ sessionId, history }: { sessionId: string; history: string }) => {
       if (sessionId === session.id) {
+        // 現在のスクロール位置を保存
+        const scrollTop = term.buffer.active.viewportY;
         term.clear();
         term.write(history);
+        // スクロール位置を復元（可能な場合）
+        if (scrollTop > 0 && term.buffer.active.length > scrollTop) {
+          term.scrollToLine(Math.min(scrollTop, term.buffer.active.length - term.rows));
+        }
       }
     };
 
