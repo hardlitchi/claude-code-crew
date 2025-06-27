@@ -1,0 +1,33 @@
+services:
+  claude-code-crew:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        - USER_ID=${USER_ID:-1000}
+        - GROUP_ID=${GROUP_ID:-1000}
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    environment:
+      - PORT=${PORT:-3001}
+      - WORK_DIR=${WORK_DIR:-/app/workspace}
+      - CC_CLAUDE_ARGS=${CC_CLAUDE_ARGS:-}
+      - CC_REPOSITORIES=${CC_REPOSITORIES:-}
+      - NODE_ENV=development
+    volumes:
+      - "${HOST_WORK_DIR:-./workspace}:/app/workspace"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      # ソースコードのホットリロード用ボリュームマウント
+      - "./client:/app/client"
+      - "./server:/app/server"
+      - "./shared:/app/shared"
+      - "./package.json:/app/package.json"
+      - "./pnpm-lock.yaml:/app/pnpm-lock.yaml"
+      - "./pnpm-workspace.yaml:/app/pnpm-workspace.yaml"
+      # node_modulesは除外
+      - "/app/client/node_modules"
+      - "/app/server/node_modules" 
+      - "/app/node_modules"
+    working_dir: /app
+    restart: unless-stopped
+    command: ["pnpm", "run", "dev"]
