@@ -55,13 +55,16 @@ export class WorktreeService {
           }
           currentWorktree = {
             path: line.substring(9),
-            isMain: false,
-            isCurrent: false,
+            isMainWorktree: false,
+            isCurrentWorktree: false,
+            branch: '',
+            commit: '',
+            repositoryId: '',
           };
         } else if (line.startsWith('branch ')) {
           currentWorktree.branch = line.substring(7);
         } else if (line === 'bare') {
-          currentWorktree.isMain = true;
+          currentWorktree.isMainWorktree = true;
         }
       }
 
@@ -70,15 +73,16 @@ export class WorktreeService {
       }
 
       // Mark the first worktree as main if none are marked
-      if (worktrees.length > 0 && !worktrees.some(w => w.isMain)) {
-        worktrees[0]!.isMain = true;
+      if (worktrees.length > 0 && !worktrees.some(w => w.isMainWorktree)) {
+        worktrees[0]!.isMainWorktree = true;
       }
 
       // Mark current worktree
       const currentPath = rootPath;
       worktrees.forEach(w => {
-        w.isCurrent = w.path === currentPath;
+        w.isCurrentWorktree = w.path === currentPath;
         w.repositoryId = repositoryId || this.repositoryService.getDefaultRepositoryId() || '';
+        w.commit = 'HEAD'; // TODO: Get actual commit hash
       });
 
       console.log('[WorktreeService] Returning', worktrees.length, 'worktrees:', worktrees.map(w => `${w.branch} -> ${w.path}`));
@@ -91,8 +95,9 @@ export class WorktreeService {
         {
           path: rootPath,
           branch: this.getCurrentBranch(repositoryId),
-          isMain: true,
-          isCurrent: true,
+          commit: 'HEAD',
+          isMainWorktree: true,
+          isCurrentWorktree: true,
           repositoryId: repositoryId || this.repositoryService.getDefaultRepositoryId() || '',
         },
       ];
@@ -204,7 +209,7 @@ export class WorktreeService {
         };
       }
 
-      if (worktree.isMain) {
+      if (worktree.isMainWorktree) {
         return {
           success: false,
           error: 'Cannot delete the main worktree',

@@ -69,7 +69,8 @@ export class RepositoryService {
       id: 'default',
       name: path.basename(workDir),
       path: workDir,
-      description: 'Default repository'
+      description: 'Default repository',
+      worktrees: []
     };
     this.repositories.set(defaultRepo.id, defaultRepo);
     console.log('[RepositoryService] Created default repository:', defaultRepo.name, 'at', defaultRepo.path);
@@ -100,7 +101,8 @@ export class RepositoryService {
       id,
       name,
       path: repoPath,
-      description
+      description,
+      worktrees: []
     };
     
     this.repositories.set(id, repository);

@@ -3,6 +3,7 @@ import { Server } from 'socket.io';
 import { WorktreeService } from '../services/worktreeService.js';
 import { SessionManager } from '../services/sessionManager.js';
 import { RepositoryService } from '../services/repositoryService.js';
+import { createSessionsRouter } from './sessions.js';
 import { 
   CreateWorktreeRequest, 
   DeleteWorktreeRequest, 
@@ -17,6 +18,10 @@ export async function setupApiRoutes(app: Express, io: Server, sessionManager: S
   
   const worktreeService = new WorktreeService(repositoryService);
   console.log('[API] WorktreeService initialized');
+  
+  // セッション永続化APIの追加
+  const sessionsRouter = createSessionsRouter(sessionManager);
+  app.use('/api/sessions', sessionsRouter);
   
   // Helper function to get worktrees with session info
   const getWorktreesWithSessions = (repositoryId?: string): Worktree[] => {

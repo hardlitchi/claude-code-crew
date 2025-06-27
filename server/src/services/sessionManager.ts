@@ -3,7 +3,9 @@ import { EventEmitter } from 'events';
 import { existsSync, mkdirSync, accessSync, constants } from 'fs';
 import { dirname } from 'path';
 import { execSync } from 'child_process';
-import { Session, SessionState, Worktree } from '../../../shared/types.js';
+import { Session, SessionState } from '../../../shared/types.js';
+import { SessionPersistenceService } from './sessionPersistence.js';
+import { v4 as uuidv4 } from 'uuid';
 
 interface InternalSession extends Session {
   process: IPty;
@@ -16,6 +18,15 @@ export class SessionManager extends EventEmitter {
   private sessions: Map<string, InternalSession> = new Map();
   private waitingWithBottomBorder: Map<string, boolean> = new Map();
   private busyTimers: Map<string, NodeJS.Timeout> = new Map();
+  private persistenceService: SessionPersistenceService;
+  private autosaveInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    super();
+    this.persistenceService = new SessionPersistenceService();
+    this.startAutosave();
+    this.restorePersistedSessions();
+  }
 
   private stripAnsi(str: string): string {
     return str
@@ -113,13 +124,7 @@ export class SessionManager extends EventEmitter {
     const sessionKey = `${repositoryId}:${worktreePath}`;
     const existing = this.sessions.get(sessionKey);
     if (existing) {
-      return {
-        id: existing.id,
-        worktreePath: existing.worktreePath,
-        repositoryId: existing.repositoryId,
-        state: existing.state,
-        lastActivity: existing.lastActivity,
-      };
+      return this.toPublicSession(existing);
     }
 
     const id = `session-${Date.now()}-${Math.random()
@@ -174,8 +179,10 @@ export class SessionManager extends EventEmitter {
       throw new Error(`Failed to start Claude CLI: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
+    const persistentId = uuidv4();
     const session: InternalSession = {
       id,
+      persistentId,
       worktreePath,
       repositoryId,
       process: ptyProcess,
@@ -184,19 +191,24 @@ export class SessionManager extends EventEmitter {
       outputHistory: [],
       lastActivity: new Date(),
       isActive: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      metadata: {},
     };
 
     this.setupBackgroundHandler(session);
     this.sessions.set(sessionKey, session);
+    
+    // セッションを永続化
+    this.persistenceService.saveSession(
+      this.toPublicSession(session),
+      session.outputHistory,
+      process.env as Record<string, string>
+    ).catch(err => console.error('Failed to persist new session:', err));
+    
     this.emit('sessionCreated', session);
 
-    return {
-      id: session.id,
-      worktreePath: session.worktreePath,
-      repositoryId: session.repositoryId,
-      state: session.state,
-      lastActivity: session.lastActivity,
-    };
+    return this.toPublicSession(session);
   }
 
   private setupBackgroundHandler(session: InternalSession): void {
@@ -242,6 +254,9 @@ export class SessionManager extends EventEmitter {
       if (newState !== oldState) {
         session.state = newState;
         this.emit('sessionStateChanged', session);
+        // 状態変更時に永続化
+        this.persistenceService.updateSessionState(session.id, newState)
+          .catch(err => console.error('Failed to persist state change:', err));
       }
 
       if (session.isActive) {
@@ -322,23 +337,116 @@ export class SessionManager extends EventEmitter {
       }
       this.sessions.delete(sessionKey);
       this.waitingWithBottomBorder.delete(session.id);
+      // セッションを非アクティブに設定（完全に削除せずに保持）
+      this.persistenceService.setSessionActive(session.id, false)
+        .catch(err => console.error('Failed to mark session as inactive:', err));
       this.emit('sessionDestroyed', session);
     }
   }
 
   getAllSessions(): Session[] {
-    return Array.from(this.sessions.values()).map(session => ({
+    return Array.from(this.sessions.values()).map(session => this.toPublicSession(session));
+  }
+
+  private toPublicSession(session: InternalSession): Session {
+    return {
       id: session.id,
+      persistentId: session.persistentId,
       worktreePath: session.worktreePath,
       repositoryId: session.repositoryId,
       state: session.state,
       lastActivity: session.lastActivity,
-    }));
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      metadata: session.metadata,
+    };
   }
 
   destroy(): void {
+    if (this.autosaveInterval) {
+      clearInterval(this.autosaveInterval);
+    }
     for (const sessionKey of this.sessions.keys()) {
       this.destroySession(sessionKey);
+    }
+  }
+
+  private startAutosave(): void {
+    // 30秒ごとにアクティブなセッションを自動保存
+    this.autosaveInterval = setInterval(() => {
+      this.sessions.forEach((session) => {
+        if (session.isActive && session.outputHistory.length > 0) {
+          this.persistenceService.saveSession(
+            this.toPublicSession(session),
+            session.outputHistory
+          ).catch(err => console.error('Autosave failed:', err));
+        }
+      });
+    }, 30000);
+  }
+
+  private async restorePersistedSessions(): Promise<void> {
+    try {
+      const persistedSessions = await this.persistenceService.getAllPersistedSessions();
+      console.log(`Found ${persistedSessions.length} persisted sessions`);
+      
+      // 永続化されたセッションの情報をメモリに復元（プロセスは後で必要に応じて再作成）
+      for (const persisted of persistedSessions) {
+        const sessionKey = `${persisted.repositoryId}:${persisted.worktreePath}`;
+        if (!this.sessions.has(sessionKey)) {
+          console.log(`Restoring session metadata for ${sessionKey}`);
+          // セッションメタデータのみを復元（プロセスは作成しない）
+          this.emit('sessionPersistedFound', persisted);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore persisted sessions:', error);
+    }
+  }
+
+  async restoreSessionFromPersistence(persistentId: string): Promise<Session | null> {
+    try {
+      const persisted = await this.persistenceService.loadSessionByPersistentId(persistentId);
+      if (!persisted) {
+        return null;
+      }
+
+      const sessionKey = `${persisted.repositoryId}:${persisted.worktreePath}`;
+      const existing = this.sessions.get(sessionKey);
+      
+      if (existing) {
+        // 既存のセッションがある場合は、履歴を復元
+        if (persisted.outputHistory && persisted.outputHistory.length > 0) {
+          existing.outputHistory = persisted.outputHistory.map(base64 => 
+            Buffer.from(base64, 'base64')
+          );
+          if (existing.isActive) {
+            this.emit('sessionRestore', existing);
+          }
+        }
+        return this.toPublicSession(existing);
+      } else {
+        // 新しいセッションを作成して履歴を復元
+        const newSession = this.createSession(persisted.worktreePath, persisted.repositoryId);
+        const session = this.sessions.get(sessionKey);
+        
+        if (session && persisted.outputHistory && persisted.outputHistory.length > 0) {
+          session.outputHistory = persisted.outputHistory.map(base64 => 
+            Buffer.from(base64, 'base64')
+          );
+          session.persistentId = persisted.persistentId;
+          session.metadata = persisted.metadata;
+          
+          if (session.isActive) {
+            this.emit('sessionRestore', session);
+          }
+        }
+        
+        return newSession;
+      }
+    } catch (error) {
+      console.error('Failed to restore session from persistence:', error);
+      return null;
     }
   }
 }
