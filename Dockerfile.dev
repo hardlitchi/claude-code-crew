@@ -26,7 +26,10 @@ ARG GROUP_ID=1000
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY client/package.json ./client/
 COPY server/package.json ./server/
-COPY shared/package.json ./shared/ 2>/dev/null
+# Copy shared directory (will copy all files including types.ts)
+COPY shared/ ./shared/
+# Create package.json for shared if it doesn't exist
+RUN if [ ! -f ./shared/package.json ]; then echo '{"name": "shared", "private": true}' > ./shared/package.json; fi
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
