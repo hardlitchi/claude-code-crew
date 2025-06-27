@@ -18,6 +18,7 @@ import {
   Select,
   MenuItem,
   SelectChangeEvent,
+  IconButton,
 } from '@mui/material';
 import {
   FolderOpen,
@@ -26,6 +27,7 @@ import {
   Merge,
   Terminal,
   Circle,
+  Menu as MenuIcon,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
 import { Worktree, Session, Repository } from '../../../shared/types';
@@ -33,10 +35,14 @@ import TerminalView from '../components/TerminalView';
 import CreateWorktreeDialog from '../components/CreateWorktreeDialog';
 import DeleteWorktreeDialog from '../components/DeleteWorktreeDialog';
 import MergeWorktreeDialog from '../components/MergeWorktreeDialog';
+import MobileBottomNavigation from '../components/MobileBottomNavigation';
+import MobileDrawer from '../components/MobileDrawer';
+import useBreakpoint from '../hooks/useBreakpoint';
 
 const drawerWidth = 300;
 
 const SessionManager: React.FC = () => {
+  const { isMobile, isMobileOrTablet } = useBreakpoint();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [selectedRepository, setSelectedRepository] = useState<Repository | null>(null);
@@ -46,6 +52,8 @@ const SessionManager: React.FC = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [mobileNavValue, setMobileNavValue] = useState(0);
 
   useEffect(() => {
     const newSocket = io();
@@ -220,15 +228,25 @@ const SessionManager: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
+    <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       <AppBar
         position="fixed"
         sx={{
-          width: `calc(100% - ${drawerWidth}px)`,
-          ml: `${drawerWidth}px`,
+          width: isMobileOrTablet ? '100%' : `calc(100% - ${drawerWidth}px)`,
+          ml: isMobileOrTablet ? 0 : `${drawerWidth}px`,
+          zIndex: (theme) => theme.zIndex.drawer + 1,
         }}
       >
         <Toolbar>
+          {isMobileOrTablet && (
+            <IconButton
+              edge="start"
+              sx={{ mr: 2 }}
+              onClick={() => setMobileDrawerOpen(true)}
+            >
+              <MenuIcon />
+            </IconButton>
+          )}
           <Terminal sx={{ mr: 2 }} />
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {selectedWorktree ? selectedWorktree.branch : 'Claude Code Crew'}
@@ -242,18 +260,19 @@ const SessionManager: React.FC = () => {
           )}
         </Toolbar>
       </AppBar>
-      <Drawer
-        sx={{
-          width: drawerWidth,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
+      {!isMobileOrTablet && (
+        <Drawer
+          sx={{
             width: drawerWidth,
-            boxSizing: 'border-box',
-          },
-        }}
-        variant="permanent"
-        anchor="left"
-      >
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: drawerWidth,
+              boxSizing: 'border-box',
+            },
+          }}
+          variant="permanent"
+          anchor="left"
+        >
         <Toolbar>
           <Typography variant="h6" noWrap>
             Repositories
@@ -331,7 +350,26 @@ const SessionManager: React.FC = () => {
             </ListItemButton>
           </ListItem>
         </List>
-      </Drawer>
+        </Drawer>
+      )}
+      
+      {isMobileOrTablet && (
+        <MobileDrawer
+          open={mobileDrawerOpen}
+          onOpen={() => setMobileDrawerOpen(true)}
+          onClose={() => setMobileDrawerOpen(false)}
+          repositories={repositories}
+          selectedRepository={selectedRepository}
+          worktrees={worktrees}
+          selectedWorktree={selectedWorktree}
+          onRepositoryChange={handleRepositoryChange}
+          onSelectWorktree={handleSelectWorktree}
+          onCreateWorktree={() => setCreateDialogOpen(true)}
+          onDeleteWorktree={() => setDeleteDialogOpen(true)}
+          onMergeWorktree={() => setMergeDialogOpen(true)}
+          getStatusIcon={getStatusIcon}
+        />
+      )}
       <Box
         component="main"
         sx={{
@@ -341,6 +379,9 @@ const SessionManager: React.FC = () => {
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
+          pb: isMobile ? 8 : 0, // 底部ナビゲーション分のパディング
+          minWidth: 0, // flex要素の最小幅を0に設定
+          overflow: 'hidden', // はみ出し防止
         }}
       >
         <Toolbar />
@@ -382,6 +423,21 @@ const SessionManager: React.FC = () => {
         worktrees={worktrees}
         repositoryId={selectedRepository?.id}
       />
+      
+      {isMobile && (
+        <MobileBottomNavigation
+          value={mobileNavValue}
+          onChange={(_event, newValue) => {
+            setMobileNavValue(newValue);
+            if (newValue === 0) {
+              setMobileDrawerOpen(true);
+            } else if (newValue === 1) {
+              setCreateDialogOpen(true);
+            }
+          }}
+          sessionCount={activeSession ? 1 : 0}
+        />
+      )}
     </Box>
   );
 };
