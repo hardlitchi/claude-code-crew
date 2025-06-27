@@ -28,6 +28,7 @@ import {
   Terminal,
   Circle,
   Menu as MenuIcon,
+  Storage as StorageIcon,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
 import { Worktree, Session, Repository } from '../../../shared/types';
@@ -35,6 +36,7 @@ import TerminalView from '../components/TerminalView';
 import CreateWorktreeDialog from '../components/CreateWorktreeDialog';
 import DeleteWorktreeDialog from '../components/DeleteWorktreeDialog';
 import MergeWorktreeDialog from '../components/MergeWorktreeDialog';
+import { SessionPersistenceDialog } from '../components/SessionPersistenceDialog';
 import MobileBottomNavigation from '../components/MobileBottomNavigation';
 import MobileDrawer from '../components/MobileDrawer';
 import useBreakpoint from '../hooks/useBreakpoint';
@@ -52,6 +54,7 @@ const SessionManager: React.FC = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [persistenceDialogOpen, setPersistenceDialogOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [mobileNavValue, setMobileNavValue] = useState(0);
 
@@ -349,6 +352,14 @@ const SessionManager: React.FC = () => {
               <ListItemText primary="Merge Worktree" />
             </ListItemButton>
           </ListItem>
+          <ListItem disablePadding>
+            <ListItemButton onClick={() => setPersistenceDialogOpen(true)}>
+              <ListItemIcon>
+                <StorageIcon />
+              </ListItemIcon>
+              <ListItemText primary="保存されたセッション" />
+            </ListItemButton>
+          </ListItem>
         </List>
         </Drawer>
       )}
@@ -367,6 +378,7 @@ const SessionManager: React.FC = () => {
           onCreateWorktree={() => setCreateDialogOpen(true)}
           onDeleteWorktree={() => setDeleteDialogOpen(true)}
           onMergeWorktree={() => setMergeDialogOpen(true)}
+          onShowPersistence={() => setPersistenceDialogOpen(true)}
           getStatusIcon={getStatusIcon}
         />
       )}
@@ -422,6 +434,19 @@ const SessionManager: React.FC = () => {
         onClose={() => setMergeDialogOpen(false)}
         worktrees={worktrees}
         repositoryId={selectedRepository?.id}
+      />
+      <SessionPersistenceDialog
+        open={persistenceDialogOpen}
+        onClose={() => setPersistenceDialogOpen(false)}
+        onSessionRestored={() => {
+          // ワークツリー一覧を再読み込み
+          if (selectedRepository) {
+            fetch(`/api/worktrees?repositoryId=${selectedRepository.id}`)
+              .then(res => res.json())
+              .then(setWorktrees)
+              .catch(err => console.error('Failed to fetch worktrees:', err));
+          }
+        }}
       />
       
       {isMobile && (

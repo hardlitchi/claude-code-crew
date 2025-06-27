@@ -32,7 +32,7 @@ const DeleteWorktreeDialog: React.FC<DeleteWorktreeDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const deletableWorktrees = worktrees.filter(w => !w.isMain);
+  const deletableWorktrees = worktrees.filter(w => !w.isMainWorktree);
 
   const handleToggle = (path: string) => {
     const currentIndex = selected.indexOf(path);

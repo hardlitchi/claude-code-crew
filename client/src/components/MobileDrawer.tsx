@@ -23,6 +23,7 @@ import {
   Delete,
   Merge,
   Close,
+  Storage as StorageIcon,
 } from '@mui/icons-material';
 import { Repository, Worktree } from '../../../shared/types';
 
@@ -39,6 +40,7 @@ interface MobileDrawerProps {
   onCreateWorktree: () => void;
   onDeleteWorktree: () => void;
   onMergeWorktree: () => void;
+  onShowPersistence?: () => void;
   getStatusIcon: (state?: string) => React.ReactNode;
 }
 
@@ -55,6 +57,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
   onCreateWorktree,
   onDeleteWorktree,
   onMergeWorktree,
+  onShowPersistence,
   getStatusIcon,
 }) => {
   return (
@@ -206,6 +209,25 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
             />
           </ListItemButton>
         </ListItem>
+        {onShowPersistence && (
+          <ListItem disablePadding>
+            <ListItemButton 
+              onClick={() => {
+                onShowPersistence();
+                onClose();
+              }}
+              sx={{ minHeight: 56, px: 2 }}
+            >
+              <ListItemIcon sx={{ minWidth: 40 }}>
+                <StorageIcon />
+              </ListItemIcon>
+              <ListItemText 
+                primary="保存されたセッション"
+                primaryTypographyProps={{ fontSize: '1rem' }}
+              />
+            </ListItemButton>
+          </ListItem>
+        )}
       </List>
       
       {/* 底部ナビゲーション分のスペース確保 */}
