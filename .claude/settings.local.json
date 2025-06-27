@@ -8,7 +8,9 @@
       "Bash(git commit:*)",
       "Bash(gh pr create:*)",
       "Bash(pnpm add:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(docker build:*)"
     ],
     "deny": []
   }

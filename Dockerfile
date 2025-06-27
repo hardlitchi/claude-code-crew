@@ -1,7 +1,8 @@
 FROM node:18-alpine
 
-# Install git and other necessary tools including GitHub CLI
-RUN apk add --no-cache git openssh-client curl bash coreutils github-cli
+# Install git and other necessary tools including GitHub CLI and build dependencies for native modules
+RUN apk add --no-cache git openssh-client curl bash coreutils github-cli \
+    python3 make g++ sqlite-dev
 
 # Install pnpm
 RUN npm install -g pnpm
