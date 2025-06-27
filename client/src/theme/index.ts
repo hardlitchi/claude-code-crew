@@ -29,11 +29,31 @@ const theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
+        '*': {
+          // 全ての要素でボックスサイジングを境界ボックスに設定
+          boxSizing: 'border-box',
+        },
+        html: {
+          // HTMLレベルでの横スクロール防止
+          overflowX: 'hidden',
+          width: '100%',
+        },
         body: {
           // タッチデバイス向けのスクロール最適化
           WebkitOverflowScrolling: 'touch',
           // タップハイライトを無効化
           WebkitTapHighlightColor: 'transparent',
+          // 横スクロール防止
+          overflowX: 'hidden',
+          width: '100%',
+          margin: 0,
+          padding: 0,
+        },
+        '#root': {
+          // Reactルート要素の設定
+          width: '100%',
+          height: '100vh',
+          overflow: 'hidden',
         },
       },
     },

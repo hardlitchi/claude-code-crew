@@ -228,12 +228,13 @@ const SessionManager: React.FC = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
+    <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       <AppBar
         position="fixed"
         sx={{
           width: isMobileOrTablet ? '100%' : `calc(100% - ${drawerWidth}px)`,
           ml: isMobileOrTablet ? 0 : `${drawerWidth}px`,
+          zIndex: (theme) => theme.zIndex.drawer + 1,
         }}
       >
         <Toolbar>
@@ -379,6 +380,8 @@ const SessionManager: React.FC = () => {
           display: 'flex',
           flexDirection: 'column',
           pb: isMobile ? 8 : 0, // 底部ナビゲーション分のパディング
+          minWidth: 0, // flex要素の最小幅を0に設定
+          overflow: 'hidden', // はみ出し防止
         }}
       >
         <Toolbar />

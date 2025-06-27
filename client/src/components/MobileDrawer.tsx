@@ -68,6 +68,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
         '& .MuiDrawer-paper': {
           width: '280px',
           maxWidth: '80vw',
+          overflow: 'hidden',
         },
       }}
     >

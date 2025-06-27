@@ -43,6 +43,8 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
           backgroundColor: 'background.paper',
           borderRadius: 2,
           boxShadow: 3,
+          maxWidth: 'calc(100vw - 16px)', // 画面幅を超えないように制限
+          overflow: 'hidden', // はみ出し防止
         }}
       >
         <Box
@@ -103,11 +105,19 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
           </Box>
           
           {/* 特殊キー */}
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 1, 
+            flexWrap: 'wrap', 
+            mt: 1,
+            maxWidth: '100%',
+            overflow: 'hidden',
+          }}>
             <Button
               variant="outlined"
               size="small"
               onClick={() => handleKeyPress('\x03')}
+              sx={{ minWidth: 'auto', fontSize: '0.75rem' }}
             >
               Ctrl+C
             </Button>
@@ -115,6 +125,7 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
               variant="outlined"
               size="small"
               onClick={() => handleKeyPress('\x1b')}
+              sx={{ minWidth: 'auto', fontSize: '0.75rem' }}
             >
               Esc
             </Button>
@@ -122,6 +133,7 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
               variant="outlined"
               size="small"
               onClick={() => handleKeyPress('\t')}
+              sx={{ minWidth: 'auto', fontSize: '0.75rem' }}
             >
               Tab
             </Button>
@@ -129,17 +141,26 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
               variant="outlined"
               size="small"
               onClick={() => handleKeyPress('\r')}
+              sx={{ minWidth: 'auto', fontSize: '0.75rem' }}
             >
               Enter
             </Button>
           </Box>
           
           {/* よく使うコマンド */}
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 1, 
+            flexWrap: 'wrap', 
+            mt: 1,
+            maxWidth: '100%',
+            overflow: 'hidden',
+          }}>
             <Button
               variant="contained"
               size="small"
               onClick={() => handleKeyPress('ls\r')}
+              sx={{ minWidth: 'auto' }}
             >
               ls
             </Button>
@@ -147,6 +168,7 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
               variant="contained"
               size="small"
               onClick={() => handleKeyPress('clear\r')}
+              sx={{ minWidth: 'auto' }}
             >
               clear
             </Button>
@@ -154,6 +176,7 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
               variant="contained"
               size="small"
               onClick={() => handleKeyPress('cd ..\r')}
+              sx={{ minWidth: 'auto' }}
             >
               cd ..
             </Button>
