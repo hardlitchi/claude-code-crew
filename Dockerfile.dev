@@ -22,19 +22,14 @@ WORKDIR /app
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 
-# Copy package files
+# Copy package files for dependency installation
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY client/package.json ./client/
 COPY server/package.json ./server/
+COPY shared/package.json ./shared/ 2>/dev/null || echo "No shared package.json"
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
-
-# Copy source code
-COPY . .
-
-# Build the application
-RUN pnpm run build
 
 # Copy and set up entrypoint (as root)
 COPY entrypoint.sh /entrypoint.sh
@@ -57,4 +52,4 @@ EXPOSE 3001
 
 # Use entrypoint script
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["pnpm", "run", "start"]
+CMD ["pnpm", "run", "dev"]

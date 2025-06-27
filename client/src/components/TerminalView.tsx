@@ -1,10 +1,14 @@
-import React, { useEffect, useRef } from 'react';
-import { Box } from '@mui/material';
+import React, { useEffect, useRef, useState } from 'react';
+import { Box, Fab } from '@mui/material';
+import { Keyboard } from '@mui/icons-material';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Socket } from 'socket.io-client';
 import { Session } from '../../../shared/types';
+import useBreakpoint from '../hooks/useBreakpoint';
+import useSwipeGesture from '../hooks/useSwipeGesture';
+import TerminalInputHelper from './TerminalInputHelper';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalViewProps {
@@ -13,18 +17,46 @@ interface TerminalViewProps {
 }
 
 const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
+  const { isMobile, isTablet } = useBreakpoint();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const [inputHelperVisible, setInputHelperVisible] = useState(false);
+
+  // スワイプジェスチャーの設定
+  const { attachListeners } = useSwipeGesture({
+    onSwipeUp: () => {
+      if (isMobile && xtermRef.current) {
+        // 上スワイプで入力ヘルパーを表示
+        setInputHelperVisible(true);
+      }
+    },
+    onSwipeDown: () => {
+      if (isMobile && inputHelperVisible) {
+        // 下スワイプで入力ヘルパーを非表示
+        setInputHelperVisible(false);
+      }
+    },
+    minDistance: 30,
+  });
 
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return;
 
+    // レスポンシブフォントサイズ
+    const fontSize = isMobile ? 12 : isTablet ? 13 : 14;
+    
     // Create terminal instance
     const term = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: fontSize,
       fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace',
+      // モバイル向け設定
+      scrollback: isMobile ? 1000 : 3000, // スクロールバック履歴を制限
+      fastScrollModifier: 'alt',
+      // タッチスクロールの改善
+      macOptionIsMeta: true,
+      allowTransparency: false,
       theme: {
         background: '#0a0a0a',
         foreground: '#d4d4d4',
@@ -58,6 +90,11 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
     // Open terminal in the DOM
     term.open(terminalRef.current);
     fitAddon.fit();
+    
+    // モバイルでスワイプジェスチャーを有効化
+    if (isMobile && terminalRef.current) {
+      attachListeners(terminalRef.current);
+    }
 
     // Store references
     xtermRef.current = term;
@@ -73,13 +110,29 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
       socket.emit('session:resize', { sessionId: session.id, cols, rows });
     });
 
-    // Handle window resize
+    // Handle window resize with debounce for better performance
+    let resizeTimeout: NodeJS.Timeout;
     const handleResize = () => {
-      if (fitAddonRef.current) {
-        fitAddonRef.current.fit();
-      }
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (fitAddonRef.current) {
+          fitAddonRef.current.fit();
+        }
+      }, 100);
     };
+    
     window.addEventListener('resize', handleResize);
+    
+    // モバイル向けオリエンテーション変更対応
+    if (isMobile) {
+      window.addEventListener('orientationchange', () => {
+        setTimeout(() => {
+          if (fitAddonRef.current) {
+            fitAddonRef.current.fit();
+          }
+        }, 100);
+      });
+    }
 
     // Socket event handlers
     const handleOutput = ({ sessionId, data }: { sessionId: string; data: string }) => {
@@ -109,14 +162,25 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
 
     // Cleanup
     return () => {
+      clearTimeout(resizeTimeout);
       window.removeEventListener('resize', handleResize);
+      if (isMobile) {
+        window.removeEventListener('orientationchange', handleResize);
+      }
       socket.off('session:output', handleOutput);
       socket.off('session:restore', handleRestore);
       term.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [session.id, socket]);
+  }, [session.id, socket, isMobile, attachListeners]);
+  
+  // 入力ヘルパーからのキー入力処理
+  const handleInputHelperKeyPress = (key: string) => {
+    if (xtermRef.current) {
+      socket.emit('session:input', { sessionId: session.id, input: key });
+    }
+  };
 
   // Handle session changes
   useEffect(() => {
@@ -126,20 +190,67 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
   }, [session]);
 
   return (
-    <Box
-      ref={terminalRef}
-      sx={{
-        flexGrow: 1,
-        padding: 1,
-        backgroundColor: '#0a0a0a',
-        '& .xterm': {
-          padding: '10px',
-        },
-        '& .xterm-viewport': {
-          backgroundColor: 'transparent !important',
-        },
-      }}
-    />
+    <Box sx={{ position: 'relative', flexGrow: 1 }}>
+      <Box
+        ref={terminalRef}
+        sx={{
+          flexGrow: 1,
+          padding: isMobile ? 0.5 : 1,
+          backgroundColor: '#0a0a0a',
+          height: '100%',
+          // タッチスクロール最適化
+          overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          '& .xterm': {
+            padding: isMobile ? '8px' : '10px',
+          },
+          '& .xterm-viewport': {
+            backgroundColor: 'transparent !important',
+            // タッチデバイスでのスクロール改善
+            touchAction: 'pan-y',
+          },
+          '& .xterm-screen': {
+            // タップ時のハイライトを無効化
+            WebkitTapHighlightColor: 'transparent',
+            WebkitUserSelect: 'text',
+            userSelect: 'text',
+          },
+          // モバイル時の横スクロール調整
+          ...(isMobile && {
+            '& .xterm-helpers textarea': {
+              // 仮想キーボード対応
+              fontSize: '16px', // ズームを防ぐ
+            },
+          }),
+        }}
+      />
+      
+      {isMobile && (
+        <>
+          {/* 入力ヘルパー表示ボタン */}
+          <Fab
+            size="small"
+            color="primary"
+            onClick={() => setInputHelperVisible(!inputHelperVisible)}
+            sx={{
+              position: 'absolute',
+              bottom: 16,
+              right: 16,
+              zIndex: 999,
+            }}
+          >
+            <Keyboard />
+          </Fab>
+          
+          {/* ターミナル入力ヘルパー */}
+          <TerminalInputHelper
+            visible={inputHelperVisible}
+            onKeyPress={handleInputHelperKeyPress}
+            onClose={() => setInputHelperVisible(false)}
+          />
+        </>
+      )}
+    </Box>
   );
 };
 

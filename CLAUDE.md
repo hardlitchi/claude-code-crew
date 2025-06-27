@@ -18,6 +18,10 @@ Claude Code Crew is a web-based interface for managing multiple Claude Code sess
 - `pnpm run build` - Build both client and server for production
 - `pnpm run start` - Start production server
 
+### Docker Development
+- `docker compose -f docker-compose.dev.yml up` - Start development environment with hot reload
+- `docker compose -f docker-compose.yml up` - Start production environment
+
 ### Testing
 - `pnpm run test` - Run tests in watch mode across all packages
 - `pnpm run test:run` - Run tests once across all packages
