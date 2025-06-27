@@ -26,7 +26,7 @@ ARG GROUP_ID=1000
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY client/package.json ./client/
 COPY server/package.json ./server/
-COPY shared/package.json ./shared/ 2>/dev/null || echo "No shared package.json"
+COPY shared/package.json ./shared/ 2>/dev/null
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
