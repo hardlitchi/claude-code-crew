@@ -207,13 +207,31 @@ export async function setupApiRoutes(app: Express, io: Server, sessionManager: S
   // Add a new repository
   app.post('/api/repositories', async (req, res) => {
     try {
-      const { name, path, description } = req.body;
+      const { name, path: repoPath, description } = req.body;
       
-      if (!name || !path) {
-        return res.status(400).json({ error: 'Name and path are required' });
+      if (!name || !repoPath) {
+        return res.status(400).json({ error: 'リポジトリ名とパスは必須です' });
       }
 
-      const repository = await repositoryService.addRepository(name, path, description);
+      // パスの存在確認
+      const fs = require('fs');
+      if (!fs.existsSync(repoPath)) {
+        return res.status(400).json({ error: '指定されたパスが存在しません' });
+      }
+
+      // ディレクトリであることを確認
+      const stats = fs.statSync(repoPath);
+      if (!stats.isDirectory()) {
+        return res.status(400).json({ error: '指定されたパスはディレクトリではありません' });
+      }
+
+      // Gitリポジトリであることを確認
+      const gitPath = require('path').join(repoPath, '.git');
+      if (!fs.existsSync(gitPath)) {
+        return res.status(400).json({ error: '指定されたパスはGitリポジトリではありません' });
+      }
+
+      const repository = await repositoryService.addRepository(name, repoPath, description);
       io.emit('repositories:updated', repositoryService.getAllRepositories());
       res.json(repository);
     } catch (error) {

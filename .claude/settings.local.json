@@ -10,7 +10,9 @@
       "Bash(pnpm add:*)",
       "Bash(find:*)",
       "Bash(pnpm approve-builds:*)",
-      "Bash(docker build:*)"
+      "Bash(docker build:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

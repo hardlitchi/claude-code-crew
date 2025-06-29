@@ -41,6 +41,7 @@ interface MobileDrawerProps {
   onDeleteWorktree: () => void;
   onMergeWorktree: () => void;
   onShowPersistence?: () => void;
+  onManageRepositories?: () => void;
   getStatusIcon: (state?: string) => React.ReactNode;
 }
 
@@ -58,6 +59,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
   onDeleteWorktree,
   onMergeWorktree,
   onShowPersistence,
+  onManageRepositories,
   getStatusIcon,
 }) => {
   return (
@@ -104,6 +106,21 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
                 {repo.name}
               </MenuItem>
             ))}
+            <Divider />
+            <MenuItem value="add-new">
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Add fontSize="small" />
+                <Typography>新規リポジトリを追加</Typography>
+              </Box>
+            </MenuItem>
+            {onManageRepositories && (
+              <MenuItem value="manage">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <FolderOpen fontSize="small" />
+                  <Typography>リポジトリを管理</Typography>
+                </Box>
+              </MenuItem>
+            )}
           </Select>
         </FormControl>
       </Box>
