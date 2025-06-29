@@ -12,6 +12,9 @@ interface InternalSession extends Session {
   output: string[];
   outputHistory: Buffer[];
   isActive: boolean;
+  restartCount: number;
+  lastActivityTime: number;
+  connectedClients: Set<string>;
 }
 
 export class SessionManager extends EventEmitter {
@@ -20,6 +23,8 @@ export class SessionManager extends EventEmitter {
   private busyTimers: Map<string, NodeJS.Timeout> = new Map();
   private persistenceService: SessionPersistenceService;
   private autosaveInterval: NodeJS.Timeout | null = null;
+  private maxRestartAttempts: number = 3;
+  public clientSessions: Map<string, Set<string>> = new Map();
 
   constructor() {
     super();
@@ -194,9 +199,12 @@ export class SessionManager extends EventEmitter {
       createdAt: new Date(),
       updatedAt: new Date(),
       metadata: {},
+      restartCount: 0,
+      lastActivityTime: Date.now(),
+      connectedClients: new Set(),
     };
 
-    this.setupBackgroundHandler(session);
+    this.setupProcessHandlers(session);
     this.sessions.set(sessionKey, session);
     
     // セッションを永続化
@@ -211,7 +219,7 @@ export class SessionManager extends EventEmitter {
     return this.toPublicSession(session);
   }
 
-  private setupBackgroundHandler(session: InternalSession): void {
+  private setupProcessHandlers(session: InternalSession): void {
     session.process.onData((data: string) => {
       const buffer = Buffer.from(data, 'utf8');
       session.outputHistory.push(buffer);
@@ -264,11 +272,28 @@ export class SessionManager extends EventEmitter {
       }
     });
 
-    session.process.onExit(() => {
-      session.state = 'idle';
-      this.emit('sessionStateChanged', session);
-      this.destroySession(`${session.repositoryId}:${session.worktreePath}`);
-      this.emit('sessionExit', session);
+    session.process.onExit(({ exitCode, signal }) => {
+      console.log(`Process exited with code ${exitCode}, signal ${signal} for session ${session.worktreePath}`);
+      
+      // 予期しない終了の場合、復旧を試行
+      if (session.restartCount < this.maxRestartAttempts && (exitCode !== 0 || signal)) {
+        console.log(`Attempting to restart session ${session.worktreePath}, attempt ${session.restartCount + 1}`);
+        this.restartSession(session);
+      } else {
+        // 復旧失敗またはクライアントが接続していない場合は削除
+        if (session.connectedClients.size === 0) {
+          console.log(`No clients connected, destroying session ${session.worktreePath}`);
+          session.state = 'idle';
+          this.emit('sessionStateChanged', session);
+          this.destroySession(`${session.repositoryId}:${session.worktreePath}`);
+          this.emit('sessionExit', session);
+        } else {
+          // クライアントが接続している場合は状態を 'disconnected' に変更
+          session.state = 'idle';
+          this.emit('sessionStateChanged', session);
+          this.emit('sessionDisconnected', session);
+        }
+      }
     });
   }
 
@@ -362,7 +387,7 @@ export class SessionManager extends EventEmitter {
     };
   }
 
-  destroy(): void {
+  destroyAll(): void {
     if (this.autosaveInterval) {
       clearInterval(this.autosaveInterval);
     }
@@ -447,6 +472,108 @@ export class SessionManager extends EventEmitter {
     } catch (error) {
       console.error('Failed to restore session from persistence:', error);
       return null;
+    }
+  }
+  
+  // セッション復旧機能
+  private async restartSession(session: InternalSession): Promise<void> {
+    try {
+      session.restartCount++;
+      console.log(`Restarting session ${session.worktreePath}, attempt ${session.restartCount}`);
+      
+      // 既存のプロセスをクリーンアップ
+      const sessionKey = `${session.repositoryId}:${session.worktreePath}`;
+      const existingTimer = this.busyTimers.get(sessionKey);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.busyTimers.delete(sessionKey);
+      }
+      
+      // 新しいプロセスを起動
+      const claudeArgs = this.buildClaudeArgs(session.worktreePath);
+      const newProcess = spawn('claude', claudeArgs, {
+        name: 'xterm-color',
+        cols: process.stdout.columns || 80,
+        rows: process.stdout.rows || 24,
+        cwd: session.worktreePath,
+        env: process.env as { [key: string]: string },
+      });
+      
+      // プロセスを更新
+      session.process = newProcess;
+      session.state = 'idle';
+      session.lastActivityTime = Date.now();
+      
+      // イベントリスナーを再設定
+      this.setupProcessHandlers(session);
+      
+      // クライアントに復旧を通知
+      this.emit('sessionRestarted', session);
+      this.emit('sessionStateChanged', session);
+      
+      console.log(`Session ${session.worktreePath} restarted successfully`);
+    } catch (error) {
+      console.error(`Failed to restart session ${session.worktreePath}:`, error);
+      // 復旧失敗時はセッションを終了
+      this.destroySession(`${session.repositoryId}:${session.worktreePath}`);
+    }
+  }
+  
+  // クライアント接続管理
+  addClientToSession(sessionKey: string, clientId: string): void {
+    const session = this.sessions.get(sessionKey);
+    if (session) {
+      session.connectedClients.add(clientId);
+      session.lastActivityTime = Date.now();
+      console.log(`Client ${clientId} connected to session ${sessionKey}`);
+    }
+  }
+  
+  removeClientFromSession(sessionKey: string, clientId: string): void {
+    const session = this.sessions.get(sessionKey);
+    if (session) {
+      session.connectedClients.delete(clientId);
+      console.log(`Client ${clientId} disconnected from session ${sessionKey}`);
+      
+      // クライアントがいなくなった場合、非アクティブ化
+      if (session.connectedClients.size === 0) {
+        session.isActive = false;
+        console.log(`Session ${sessionKey} set to inactive - no clients connected`);
+      }
+    }
+  }
+  
+  // Claudeコマンド引数を構築
+  private buildClaudeArgs(worktreePath: string): string[] {
+    const claudeArgs = [worktreePath];
+    
+    // 環境変数から追加引数を取得
+    const extraArgs = process.env.CC_CLAUDE_ARGS;
+    if (extraArgs) {
+      claudeArgs.push(...extraArgs.split(' '));
+    }
+    
+    return claudeArgs;
+  }
+
+  destroy(): void {
+    this.sessions.forEach((session) => {
+      try {
+        session.process.kill();
+      } catch (error) {
+        console.warn('Failed to kill session process:', error);
+      }
+    });
+
+    this.sessions.clear();
+    this.waitingWithBottomBorder.clear();
+    this.busyTimers.forEach(timer => clearTimeout(timer));
+    this.busyTimers.clear();
+    this.clientSessions.clear();
+
+    if (this.autosaveInterval) {
+      clearInterval(this.autosaveInterval);
+      this.autosaveInterval = null;
     }
   }
 }

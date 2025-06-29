@@ -83,6 +83,20 @@ export async function setupWebSocket(io: Server, sessionManager: SessionManager)
     }
   });
 
+  // セッション復旧イベント
+  sessionManager.on('sessionRestarted', (session: Session) => {
+    console.log(`Session restarted: ${session.id}`);
+    io.emit('session:restarted', session);
+    io.emit('worktrees:updated', getWorktreesWithSessions());
+  });
+
+  // セッション切断イベント
+  sessionManager.on('sessionDisconnected', (session: Session) => {
+    console.log(`Session disconnected: ${session.id}`);
+    io.emit('session:disconnected', session);
+    io.emit('worktrees:updated', getWorktreesWithSessions());
+  });
+
   // Socket connection handler
   io.on('connection', (socket: Socket) => {
     console.log('Client connected:', socket.id);
@@ -100,6 +114,16 @@ export async function setupWebSocket(io: Server, sessionManager: SessionManager)
         }
         const session = sessionManager.createSession(worktreePath, repoId);
         sessionManager.setSessionActive(worktreePath, true, repoId);
+        
+        // クライアントをセッションに登録
+        const sessionKey = `${repoId}:${worktreePath}`;
+        sessionManager.addClientToSession(sessionKey, socket.id);
+        
+        // クライアントのセッション管理
+        if (!sessionManager.clientSessions?.has(socket.id)) {
+          sessionManager.clientSessions?.set(socket.id, new Set());
+        }
+        sessionManager.clientSessions?.get(socket.id)?.add(sessionKey);
       } catch (error) {
         console.error('Failed to create session:', error);
         socket.emit('error', { 
@@ -181,17 +205,26 @@ export async function setupWebSocket(io: Server, sessionManager: SessionManager)
     // Handle disconnect
     socket.on('disconnect', () => {
       console.log('Client disconnected:', socket.id);
+      
+      // クライアントが接続していたセッションから削除
+      const clientSessions = sessionManager.clientSessions?.get(socket.id);
+      if (clientSessions) {
+        clientSessions.forEach(sessionKey => {
+          sessionManager.removeClientFromSession(sessionKey, socket.id);
+        });
+        sessionManager.clientSessions?.delete(socket.id);
+      }
     });
   });
 
   // Cleanup on server shutdown
   process.on('SIGINT', () => {
-    sessionManager.destroy();
+    sessionManager.destroyAll();
     process.exit();
   });
 
   process.on('SIGTERM', () => {
-    sessionManager.destroy();
+    sessionManager.destroyAll();
     process.exit();
   });
 }

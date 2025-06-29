@@ -154,8 +154,25 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
       }
     };
 
+    // セッション復旧ハンドリング
+    const handleRestarted = ({ id }: { id: string }) => {
+      if (id === session.id) {
+        term.clear();
+        term.write('\x1b[32m\r\n\u30bb\u30c3\u30b7\u30e7\u30f3\u304c\u5fa9\u65e7\u3055\u308c\u307e\u3057\u305f\u3002\u7d99\u7d9a\u3057\u3066\u4f5c\u696d\u3067\u304d\u307e\u3059\u3002\r\n\x1b[0m');
+      }
+    };
+    
+    // セッション切断ハンドリング
+    const handleDisconnected = ({ id }: { id: string }) => {
+      if (id === session.id) {
+        term.write('\x1b[31m\r\n\u30bb\u30c3\u30b7\u30e7\u30f3\u304c\u5207\u65ad\u3055\u308c\u307e\u3057\u305f\u3002\u518d\u63a5\u7d9a\u3092\u8a66\u307f\u3066\u3044\u307e\u3059...\r\n\x1b[0m');
+      }
+    };
+
     socket.on('session:output', handleOutput);
     socket.on('session:restore', handleRestore);
+    socket.on('session:restarted', handleRestarted);
+    socket.on('session:disconnected', handleDisconnected);
 
     // Request session restore if reconnecting
     socket.emit('session:restore', session.id);
@@ -169,6 +186,8 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
       }
       socket.off('session:output', handleOutput);
       socket.off('session:restore', handleRestore);
+      socket.off('session:restarted', handleRestarted);
+      socket.off('session:disconnected', handleDisconnected);
       term.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
