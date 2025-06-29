@@ -212,8 +212,10 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
     <Box sx={{ 
       position: 'relative', 
       flexGrow: 1, 
-      minWidth: 0, // flex要素の最小幅を0に設定
-      overflow: 'hidden', // はみ出し防止
+      minWidth: 0,
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
       <Box
         ref={terminalRef}
@@ -230,21 +232,22 @@ const TerminalView: React.FC<TerminalViewProps> = ({ session, socket }) => {
           WebkitOverflowScrolling: 'touch',
           '& .xterm': {
             padding: isMobile ? '4px' : '8px',
-            width: '100% !important',
-            height: '100% !important',
+            width: '100%',
+            height: '100%',
+            overflow: 'hidden',
           },
           '& .xterm-viewport': {
             backgroundColor: 'transparent !important',
-            // タッチデバイスでのスクロール改善
             touchAction: 'pan-y',
-            width: '100% !important',
+            width: '100%',
+            overflow: 'hidden',
           },
           '& .xterm-screen': {
-            // タップ時のハイライトを無効化
             WebkitTapHighlightColor: 'transparent',
             WebkitUserSelect: 'text',
             userSelect: 'text',
-            width: '100% !important',
+            width: '100%',
+            overflow: 'hidden',
           },
           // モバイル時の横スクロール調整
           ...(isMobile && {

@@ -40,6 +40,8 @@ import { SessionPersistenceDialog } from '../components/SessionPersistenceDialog
 import MobileBottomNavigation from '../components/MobileBottomNavigation';
 import MobileDrawer from '../components/MobileDrawer';
 import useBreakpoint from '../hooks/useBreakpoint';
+import AddRepositoryDialog from '../components/AddRepositoryDialog';
+import RepositoryManagementDialog from '../components/RepositoryManagementDialog';
 
 const drawerWidth = 300;
 
@@ -55,6 +57,8 @@ const SessionManager: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [persistenceDialogOpen, setPersistenceDialogOpen] = useState(false);
+  const [addRepositoryDialogOpen, setAddRepositoryDialogOpen] = useState(false);
+  const [repositoryManagementDialogOpen, setRepositoryManagementDialogOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [mobileNavValue, setMobileNavValue] = useState(0);
 
@@ -180,6 +184,14 @@ const SessionManager: React.FC = () => {
 
   const handleRepositoryChange = (event: SelectChangeEvent<string>) => {
     const repositoryId = event.target.value;
+    if (repositoryId === 'add-new') {
+      setAddRepositoryDialogOpen(true);
+      return;
+    }
+    if (repositoryId === 'manage') {
+      setRepositoryManagementDialogOpen(true);
+      return;
+    }
     const repository = repositories.find(r => r.id === repositoryId);
     if (repository) {
       setSelectedRepository(repository);
@@ -294,6 +306,19 @@ const SessionManager: React.FC = () => {
                   {repo.name}
                 </MenuItem>
               ))}
+              <Divider />
+              <MenuItem value="add-new">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Add fontSize="small" />
+                  <Typography>新規リポジトリを追加</Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem value="manage">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <FolderOpen fontSize="small" />
+                  <Typography>リポジトリを管理</Typography>
+                </Box>
+              </MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -379,6 +404,7 @@ const SessionManager: React.FC = () => {
           onDeleteWorktree={() => setDeleteDialogOpen(true)}
           onMergeWorktree={() => setMergeDialogOpen(true)}
           onShowPersistence={() => setPersistenceDialogOpen(true)}
+          onManageRepositories={() => setRepositoryManagementDialogOpen(true)}
           getStatusIcon={getStatusIcon}
         />
       )}
@@ -447,6 +473,26 @@ const SessionManager: React.FC = () => {
               .catch(err => console.error('Failed to fetch worktrees:', err));
           }
         }}
+      />
+      <AddRepositoryDialog
+        open={addRepositoryDialogOpen}
+        onClose={() => setAddRepositoryDialogOpen(false)}
+        onSuccess={() => {
+          // リポジトリ一覧を再読み込み
+          fetch('/api/repositories')
+            .then(res => res.json())
+            .then((data: Repository[]) => {
+              setRepositories(data);
+            })
+            .catch(err => console.error('Failed to fetch repositories:', err));
+        }}
+      />
+      
+      <RepositoryManagementDialog
+        open={repositoryManagementDialogOpen}
+        onClose={() => setRepositoryManagementDialogOpen(false)}
+        repositories={repositories}
+        selectedRepository={selectedRepository}
       />
       
       {isMobile && (

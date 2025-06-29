@@ -35,7 +35,7 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
       <Paper
         sx={{
           position: 'fixed',
-          bottom: 64, // 底部ナビゲーションの上
+          bottom: 64,
           left: 8,
           right: 8,
           p: 2,
@@ -43,8 +43,10 @@ const TerminalInputHelper: React.FC<TerminalInputHelperProps> = ({
           backgroundColor: 'background.paper',
           borderRadius: 2,
           boxShadow: 3,
-          maxWidth: 'calc(100vw - 16px)', // 画面幅を超えないように制限
-          overflow: 'hidden', // はみ出し防止
+          maxWidth: 'calc(100vw - 16px)',
+          overflow: 'visible',
+          border: '1px solid',
+          borderColor: 'divider',
         }}
       >
         <Box
