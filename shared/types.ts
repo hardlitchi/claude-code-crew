@@ -77,3 +77,11 @@ export interface SessionPersistenceData {
   outputHistory?: string[]; // Base64エンコードされた出力履歴
   environment?: Record<string, string>; // 環境変数
 }
+
+export interface NotificationEvent {
+  sessionId: string;
+  worktreePath: string;
+  fromState: SessionState;
+  toState: SessionState;
+  timestamp: Date;
+}

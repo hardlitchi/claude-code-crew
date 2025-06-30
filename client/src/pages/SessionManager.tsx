@@ -29,9 +29,10 @@ import {
   Circle,
   Menu as MenuIcon,
   Storage as StorageIcon,
+  Notifications as NotificationsIcon,
 } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
-import { Worktree, Session, Repository } from '../../../shared/types';
+import { Worktree, Session, Repository, NotificationEvent } from '../../../shared/types';
 import TerminalView from '../components/TerminalView';
 import CreateWorktreeDialog from '../components/CreateWorktreeDialog';
 import DeleteWorktreeDialog from '../components/DeleteWorktreeDialog';
@@ -42,6 +43,8 @@ import MobileDrawer from '../components/MobileDrawer';
 import useBreakpoint from '../hooks/useBreakpoint';
 import AddRepositoryDialog from '../components/AddRepositoryDialog';
 import RepositoryManagementDialog from '../components/RepositoryManagementDialog';
+import { NotificationSettings } from '../components/NotificationSettings';
+import { useNotifications } from '../hooks/useNotifications';
 
 const drawerWidth = 300;
 
@@ -61,6 +64,8 @@ const SessionManager: React.FC = () => {
   const [repositoryManagementDialogOpen, setRepositoryManagementDialogOpen] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [mobileNavValue, setMobileNavValue] = useState(0);
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
+  const notifications = useNotifications();
 
   useEffect(() => {
     const newSocket = io();
@@ -108,6 +113,10 @@ const SessionManager: React.FC = () => {
         }
         return prevSession;
       });
+    });
+
+    newSocket.on('notification:show', (event: NotificationEvent) => {
+      notifications.showNotification(event);
     });
 
     return () => {
@@ -266,6 +275,13 @@ const SessionManager: React.FC = () => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {selectedWorktree ? selectedWorktree.branch : 'Claude Code Crew'}
           </Typography>
+          <IconButton
+            color="inherit"
+            onClick={() => setNotificationSettingsOpen(true)}
+            sx={{ mr: 1 }}
+          >
+            <NotificationsIcon />
+          </IconButton>
           {activeSession && (
             <Chip
               label={activeSession.state.replace('_', ' ')}
@@ -493,6 +509,15 @@ const SessionManager: React.FC = () => {
         onClose={() => setRepositoryManagementDialogOpen(false)}
         repositories={repositories}
         selectedRepository={selectedRepository}
+      />
+      
+      <NotificationSettings
+        open={notificationSettingsOpen}
+        onClose={() => setNotificationSettingsOpen(false)}
+        settings={notifications.settings}
+        permission={notifications.permission}
+        onSettingsChange={notifications.updateSettings}
+        onRequestPermission={notifications.requestPermission}
       />
       
       {isMobile && (
