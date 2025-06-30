@@ -7,6 +7,14 @@ import { Session, SessionState } from '../../../shared/types.js';
 import { SessionPersistenceService } from './sessionPersistence.js';
 import { v4 as uuidv4 } from 'uuid';
 
+export interface NotificationEvent {
+  sessionId: string;
+  worktreePath: string;
+  fromState: SessionState;
+  toState: SessionState;
+  timestamp: Date;
+}
+
 interface InternalSession extends Session {
   process: IPty;
   output: string[];
@@ -262,6 +270,19 @@ export class SessionManager extends EventEmitter {
       if (newState !== oldState) {
         session.state = newState;
         this.emit('sessionStateChanged', session);
+        
+        // 通知イベントを発火（busy→idle または busy→waiting_input の時のみ）
+        if (oldState === 'busy' && (newState === 'idle' || newState === 'waiting_input')) {
+          const notificationEvent: NotificationEvent = {
+            sessionId: session.id,
+            worktreePath: session.worktreePath,
+            fromState: oldState,
+            toState: newState,
+            timestamp: new Date()
+          };
+          this.emit('notification', notificationEvent);
+        }
+        
         // 状態変更時に永続化
         this.persistenceService.updateSessionState(session.id, newState)
           .catch(err => console.error('Failed to persist state change:', err));

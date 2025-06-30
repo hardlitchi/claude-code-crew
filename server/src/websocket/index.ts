@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import { SessionManager } from '../services/sessionManager.js';
+import { SessionManager, NotificationEvent } from '../services/sessionManager.js';
 import { WorktreeService } from '../services/worktreeService.js';
 import { RepositoryService } from '../services/repositoryService.js';
 import { Session, Worktree } from '../../../shared/types.js';
@@ -95,6 +95,12 @@ export async function setupWebSocket(io: Server, sessionManager: SessionManager)
     console.log(`Session disconnected: ${session.id}`);
     io.emit('session:disconnected', session);
     io.emit('worktrees:updated', getWorktreesWithSessions());
+  });
+
+  // 通知イベント
+  sessionManager.on('notification', (event: NotificationEvent) => {
+    console.log(`Notification event: ${event.sessionId} ${event.fromState} -> ${event.toState}`);
+    io.emit('notification:show', event);
   });
 
   // Socket connection handler
