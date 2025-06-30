@@ -279,4 +279,33 @@ export async function setupApiRoutes(app: Express, io: Server, sessionManager: S
       });
     }
   });
+
+  // Clone a repository from URL
+  app.post('/api/repositories/clone', async (req, res) => {
+    try {
+      const { url, name, description, targetPath } = req.body;
+      
+      if (!url) {
+        return res.status(400).json({ error: 'リポジトリURLは必須です' });
+      }
+
+      // URL検証
+      if (!repositoryService.validateGitUrl(url)) {
+        return res.status(400).json({ 
+          error: '有効なGitHub/GitLabのリポジトリURLを入力してください' 
+        });
+      }
+
+      console.log(`[API] Cloning repository from URL: ${url}`);
+      const repository = await repositoryService.cloneRepository(url, name, description, targetPath);
+      
+      io.emit('repositories:updated', repositoryService.getAllRepositories());
+      res.json({ repository, clonePath: repository.path });
+    } catch (error) {
+      console.error('[API] Error cloning repository:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'リポジトリのクローンに失敗しました' 
+      });
+    }
+  });
 }

@@ -2,6 +2,8 @@ import { Repository } from '../../../shared/types.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { execSync } from 'child_process';
+import os from 'os';
 
 export class RepositoryService {
   private repositories: Map<string, Repository> = new Map();
@@ -149,5 +151,69 @@ export class RepositoryService {
   getDefaultRepositoryId(): string | undefined {
     if (this.singleRepoMode) return 'default';
     return this.repositories.size > 0 ? this.repositories.keys().next().value : undefined;
+  }
+
+  async cloneRepository(url: string, name?: string, description?: string, targetPath?: string): Promise<Repository> {
+    // URLからリポジトリ名を抽出
+    const repoNameMatch = url.match(/\/([^\/]+?)(\.git)?$/);
+    const defaultRepoName = repoNameMatch ? repoNameMatch[1] : 'cloned-repo';
+    const finalName = name || defaultRepoName;
+
+    // クローン先のパスを決定
+    const defaultClonePath = path.join(os.homedir(), '.claude-code-crew', 'repositories');
+    const cloneBasePath = targetPath || defaultClonePath;
+    const clonePath = path.join(cloneBasePath, finalName);
+
+    try {
+      // クローン先ディレクトリを作成
+      await fs.mkdir(cloneBasePath, { recursive: true });
+
+      // 既に同じパスが存在する場合はエラー
+      try {
+        await fs.access(clonePath);
+        throw new Error(`ディレクトリが既に存在します: ${clonePath}`);
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      // Git クローンを実行
+      console.log(`[RepositoryService] Cloning repository from ${url} to ${clonePath}`);
+      execSync(`git clone "${url}" "${clonePath}"`, {
+        stdio: 'pipe',
+        encoding: 'utf-8'
+      });
+
+      // リポジトリを追加
+      const repository = await this.addRepository(
+        finalName,
+        clonePath,
+        description || `Cloned from ${url}`
+      );
+
+      console.log(`[RepositoryService] Successfully cloned repository: ${finalName}`);
+      return repository;
+    } catch (error: any) {
+      // クローンに失敗した場合、作成されたディレクトリを削除
+      try {
+        await fs.rm(clonePath, { recursive: true, force: true });
+      } catch (cleanupError) {
+        // クリーンアップエラーは無視
+      }
+
+      console.error(`[RepositoryService] Failed to clone repository:`, error);
+      throw new Error(`リポジトリのクローンに失敗しました: ${error.message}`);
+    }
+  }
+
+  validateGitUrl(url: string): boolean {
+    // GitHub/GitLab SSH URLパターン（組織名やユーザー名に使用可能な文字を拡張）
+    const sshPattern = /^git@(github\.com|gitlab\.com):([\w.-]+)\/([\w.-]+)\.git$/;
+    
+    // GitHub/GitLab HTTPS URLパターン
+    const httpsPattern = /^https?:\/\/(github\.com|gitlab\.com)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$/;
+    
+    return sshPattern.test(url) || httpsPattern.test(url);
   }
 }
